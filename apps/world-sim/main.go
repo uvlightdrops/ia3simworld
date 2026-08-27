@@ -108,7 +108,7 @@ func NewSim() *Sim {
 	s := &Sim{
 		worldWidth:     96,
 		worldHeight:    96,
-		riverWidth:     2,
+		riverWidth:     4,
 		lakesDensity:   0.20,
 		berriesDensity: 0.20,
 		events:         []string{"[System] Simulation world initialized."},
@@ -276,6 +276,7 @@ func (s *Sim) generateTerrain() {
 
 	// Procedurally place 3 small homestead settlements (Gehöfte)
 	centersX := []int{24, 48, 72}
+	var settlementCenters []Position
 	for _, cx := range centersX {
 		// Find a safe spot on Grass/Forest around the center Y
 		midY := s.worldHeight / 2
@@ -288,6 +289,7 @@ func (s *Sim) generateTerrain() {
 				break
 			}
 		}
+		settlementCenters = append(settlementCenters, Position{X: cx, Y: cy})
 
 		// Turn a 2x2 cluster around (cx, cy) into homesteads (home)
 		for dy := 0; dy < 2; dy++ {
@@ -356,31 +358,130 @@ func (s *Sim) generateTerrain() {
 		}
 	}
 
-	// Place a central courthouse cluster (court) representing legal system in the middle of the world
+	// Place courthouse cluster (court) and marketplace cluster (market)
+	// Enforcing: At least 10 units away from any settlement center, and at least 10 units apart from each other.
 	courtY := s.worldHeight/2 - 4
 	courtX := s.worldWidth/2 - 2
+	foundCourt := false
+
+	for y := 0; y < s.worldHeight; y++ {
+		for x := 0; x < s.worldWidth; x++ {
+			pos := Position{X: x, Y: y}
+			
+			// Check distance to all settlement centers
+			distOk := true
+			for _, sc := range settlementCenters {
+				if s.toroidalDistance(pos, sc) < 10.0 {
+					distOk = false
+					break
+				}
+			}
+			if !distOk {
+				continue
+			}
+			
+			// Check if 2x2 area is on safe ground (not deep water or existing homes)
+			areaOk := true
+			for dy := 0; dy < 2; dy++ {
+				for dx := 0; dx < 2; dx++ {
+					ny := wrap(y+dy, s.worldHeight)
+					nx := wrap(x+dx, s.worldWidth)
+					t := terrain[ny][nx]
+					if t != string(TerrainGrass) && t != string(TerrainForest) {
+						areaOk = false
+						break
+					}
+				}
+				if !areaOk {
+					break
+				}
+			}
+			
+			if areaOk {
+				courtX = x
+				courtY = y
+				foundCourt = true
+				break
+			}
+		}
+		if foundCourt {
+			break
+		}
+	}
+
+	// Place court courtroom tiles
 	for dy := 0; dy < 2; dy++ {
 		for dx := 0; dx < 2; dx++ {
 			ny := wrap(courtY+dy, s.worldHeight)
 			nx := wrap(courtX+dx, s.worldWidth)
-			if terrain[ny][nx] != string(TerrainWater) {
-				terrain[ny][nx] = string(TerrainCourt)
-				objects[ny][nx] = WorldObject{Type: "courtroom", Amount: 100, MaxAmount: 100}
-			}
+			terrain[ny][nx] = string(TerrainCourt)
+			objects[ny][nx] = WorldObject{Type: "courtroom", Amount: 100, MaxAmount: 100}
 		}
 	}
 
-	// Place a central marketplace cluster (market) near the courthouse
+	// Search for marketplace cluster
 	marketY := s.worldHeight/2 - 4
 	marketX := s.worldWidth/2 + 2
+	foundMarket := false
+
+	for y := 0; y < s.worldHeight; y++ {
+		for x := 0; x < s.worldWidth; x++ {
+			pos := Position{X: x, Y: y}
+			
+			// Check distance to all settlement centers
+			distOk := true
+			for _, sc := range settlementCenters {
+				if s.toroidalDistance(pos, sc) < 10.0 {
+					distOk = false
+					break
+				}
+			}
+			if !distOk {
+				continue
+			}
+			
+			// Check distance to court
+			courtPos := Position{X: courtX, Y: courtY}
+			if s.toroidalDistance(pos, courtPos) < 10.0 {
+				continue
+			}
+			
+			// Check if 2x2 area is on safe ground (not water, homes, or court)
+			areaOk := true
+			for dy := 0; dy < 2; dy++ {
+				for dx := 0; dx < 2; dx++ {
+					ny := wrap(y+dy, s.worldHeight)
+					nx := wrap(x+dx, s.worldWidth)
+					t := terrain[ny][nx]
+					if t != string(TerrainGrass) && t != string(TerrainForest) {
+						areaOk = false
+						break
+					}
+				}
+				if !areaOk {
+					break
+				}
+			}
+			
+			if areaOk {
+				marketX = x
+				marketY = y
+				foundMarket = true
+				break
+			}
+		}
+		if foundMarket {
+			break
+		}
+	}
+
+	// Place market tiles
 	for dy := 0; dy < 2; dy++ {
 		for dx := 0; dx < 2; dx++ {
 			ny := wrap(marketY+dy, s.worldHeight)
 			nx := wrap(marketX+dx, s.worldWidth)
-			if terrain[ny][nx] != string(TerrainWater) {
-				terrain[ny][nx] = string(TerrainMarket)
-				objects[ny][nx] = WorldObject{Type: "market_stall", Amount: 100, MaxAmount: 100}
-			}
+			terrain[ny][nx] = string(TerrainMarket)
+			objects[ny][nx] = WorldObject{Type: "market_stall", Amount: 100, MaxAmount: 100}
 		}
 	}
 

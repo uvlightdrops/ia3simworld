@@ -114,7 +114,7 @@ function InteractiveWorldMap({
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
 
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   const [showPaths, setShowPaths] = useState(true);
   const [showResources, setShowResources] = useState(true);
   const [showAgentNames, setShowAgentNames] = useState(true);
@@ -188,9 +188,13 @@ function InteractiveWorldMap({
 
   const hasInitialized = useRef(false);
   useEffect(() => {
-    if (dimensions.width > 0 && dimensions.height > 0 && !hasInitialized.current && state.worldSize.width > 0) {
-      fitToScreen();
-      hasInitialized.current = true;
+    if (state.worldSize.width > 0 && dimensions.width > 0) {
+      if (!hasInitialized.current) {
+        fitToScreen();
+        if (dimensions.width !== 800 || dimensions.height !== 600) {
+          hasInitialized.current = true;
+        }
+      }
     }
   }, [dimensions, state.worldSize]);
 
@@ -1037,6 +1041,12 @@ export default function Home() {
             </strong>
           </div>
           <div>
+            <div style={headerLabel}>Game Nodes</div>
+            <strong style={{ color: connectedRemoteURL ? "#10b981" : "#38bdf8" }}>
+              {connectedRemoteURL ? "2 (ia3, ia3-two)" : "1 (ia3)"}
+            </strong>
+          </div>
+          <div>
             <div style={headerLabel}>Simulation Time</div>
             <strong style={{ color: phaseColor }}>{phase} ({timeStr})</strong>
           </div>
@@ -1103,7 +1113,7 @@ export default function Home() {
               <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
                 Active Agents
               </h3>
-              <div style={{ maxHeight: 200, overflowY: "auto" }}>
+              <div>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #334155", textAlign: "left", color: "#94a3b8" }}>
@@ -1230,7 +1240,7 @@ export default function Home() {
               <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
                 Live Event Feed
               </h3>
-              <div style={{ height: 180, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ height: 360, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                 {state.events && state.events.length > 0 ? (
                   state.events.map((event, idx) => (
                     <div key={idx} style={{ padding: "4px 8px", background: "#0f172a", borderRadius: 4, borderLeft: "3px solid #38bdf8", color: "#cbd5e1" }}>

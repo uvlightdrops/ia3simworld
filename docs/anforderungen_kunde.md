@@ -22,5 +22,16 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 
 
 #### Neu
+##### GUI DONE ?  
 
-GUI: Ein modus um die agenten flüssig zu bewegen anstatt zellenweise
+- **[x] Flüssige Agenten-Bewegung:** Ein LERP-basierter Modus ermöglicht das flüssige Gleiten der Agenten auf dem Canvas. Er kann über den neuen „Smooth“-Schalter im Overlay ein- und ausgeschaltet werden.
+
+##### GUI
+- **[x] Vollständige Agenten-Tabelle:** Die Tabelle mit den aktiven Agenten wird nun im rechten Sidebar komplett und ohne Scrollbalken dargestellt.
+- **[x] Game-Node-Anzeige im Header:** Ein neuer Header-Abschnitt zeigt die Namen und die Anzahl der aktiven Knoten (z. B. `2 Nodes (ia3, ia3-two)` im Shared-World-Modus).
+- **[x] Längeres Event-Feed-Fenster:** Die vertikale Höhe des Live-Event-Feeds wurde verdoppelt (auf 360px), um mehr Nachrichten auf einmal anzuzeigen.
+- **[x] Startup-Fokus & Default Grid:** Die Karte passt sich beim Starten perfekt der Fenstergröße an, indem der Lade-Bug der Containermaße behoben wurde. Das Hilfsgitter (Grid) ist standardmäßig ausgeblendet.
+
+##### World
+- **[x] Fluss breiter:** Die Standard-Breite des Flusses wurde von 2 auf 4 Einheiten erhöht, um einen natürlicheren, mächtigeren Strom zu erzeugen.
+- **[x] Abstands-Constraint (Marktplatz & Court):** Ein systematischer Abstandsprüfer stellt sicher, dass Marktplatz und Gerichtshof mindestens 10 Einheiten von jeder Siedlung (Gehöft) entfernt und mindestens 10 Einheiten voneinander getrennt platziert werden.
