@@ -35,6 +35,13 @@ ns_exists() {
   minikube kubectl -- get ns "$ns" >/dev/null 2>&1
 }
 
+# Helper to check if a deployment exists in a namespace
+deployment_exists() {
+  local name=$1
+  local ns=$2
+  minikube kubectl -- get deployment "$name" -n "$ns" >/dev/null 2>&1
+}
+
 # Helper to rebuild and rollout a service
 update_service() {
   local name="$1"
@@ -49,27 +56,27 @@ update_service() {
   minikube image build -t "$tag" "$ROOT_DIR/$folder"
   
   echo "  2. Triggering rollout restart in Kubernetes..."
-  if ns_exists "ia3"; then
+  if deployment_exists "$name" "ia3"; then
     echo "     - Namespace: ia3..."
     minikube kubectl -- rollout restart deployment/"$name" -n ia3
   fi
-  if ns_exists "ia3-two"; then
+  if deployment_exists "$name" "ia3-two"; then
     echo "     - Namespace: ia3-two..."
     minikube kubectl -- rollout restart deployment/"$name" -n ia3-two
   fi
-  if ns_exists "ia3-three"; then
+  if deployment_exists "$name" "ia3-three"; then
     echo "     - Namespace: ia3-three..."
     minikube kubectl -- rollout restart deployment/"$name" -n ia3-three
   fi
   
   echo "  3. Waiting for rollout to complete..."
-  if ns_exists "ia3"; then
+  if deployment_exists "$name" "ia3"; then
     minikube kubectl -- rollout status deployment/"$name" -n ia3 --timeout=90s
   fi
-  if ns_exists "ia3-two"; then
+  if deployment_exists "$name" "ia3-two"; then
     minikube kubectl -- rollout status deployment/"$name" -n ia3-two --timeout=90s
   fi
-  if ns_exists "ia3-three"; then
+  if deployment_exists "$name" "ia3-three"; then
     minikube kubectl -- rollout status deployment/"$name" -n ia3-three --timeout=90s
   fi
   
