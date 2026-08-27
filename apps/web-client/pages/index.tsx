@@ -3118,8 +3118,8 @@ export default function Home() {
                     <div style={{ padding: 10, background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 6 }}>
                       <b>[✓] Energieabhängige Geschwindigkeiten:</b> Agenten und Spieler bewegen sich pro Tick 1, 2 oder 3 Tiles weit, gesteuert über ihr aktuelles Energielevel.
                     </div>
-                    <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
-                      <b>[ ] Föderiertes Sharding (Sektor-Knoten):</b> Aufteilen der Weltkarte in eigenständige, dezentral gehostete Sektoren-Knoten.
+                    <div style={{ padding: 10, background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 6 }}>
+                      <b>[✓] Föderiertes Sharding (Sektor-Knoten):</b> Weltkarte in Chunks aufgeteilt (Sektor 0,0 auf ia3, Sektor 1,0 auf ia3-two, Sektor 0,1 auf ia3-three) mit vollautomatischem toroidalen Handover-Grenzübertritts-Protokoll per REST API.
                     </div>
                     <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
                       <b>[ ] Föderierte Wissensgraphen:</b> Kontinuierlicher dezentraler Austausch von Agenteninteressen als semantische GraphLang-Kanten.

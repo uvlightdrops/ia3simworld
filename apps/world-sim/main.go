@@ -1231,6 +1231,40 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	http.HandleFunc("/control/handover-agent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var handedOverAgent Agent
+		if err := json.NewDecoder(r.Body).Decode(&handedOverAgent); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		s.eventsMu.Lock()
+		s.interactionMu.Lock()
+		
+		exists := false
+		for i, a := range s.agents {
+			if a.ID == handedOverAgent.ID {
+				s.agents[i] = handedOverAgent
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			s.agents = append(s.agents, handedOverAgent)
+		}
+
+		s.interactionMu.Unlock()
+		s.eventsMu.Unlock()
+
+		s.addEvent(fmt.Sprintf("🌐 [Sharding] Agent %s wurde per Handover auf diesem Knoten aufgenommen!", handedOverAgent.Name))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	})
+
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.snapshot())
@@ -2579,6 +2613,102 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			}
 		}
 	}
+
+	// 6. Process Federated Sharding boundary crossings and handovers
+	s.processFederatedShardingHandover()
+}
+
+func (s *Sim) processFederatedShardingHandover() {
+	nodeName := getenv("NODE_NAME", "ia3")
+	if nodeName == "" {
+		nodeName = "ia3"
+	}
+
+	var targetNode string
+	var agentsToHandover []int
+
+	s.interactionMu.Lock()
+	for i := range s.agents {
+		agent := &s.agents[i]
+		if strings.HasPrefix(agent.ID, "human-") || agent.Role == "Human Explorer" {
+			continue
+		}
+
+		if nodeName == "ia3" {
+			if agent.Position.X >= 254 {
+				targetNode = "ia3-two"
+				agentsToHandover = append(agentsToHandover, i)
+			} else if agent.Position.Y >= 254 {
+				targetNode = "ia3-three"
+				agentsToHandover = append(agentsToHandover, i)
+			}
+		} else if nodeName == "ia3-two" {
+			if agent.Position.X <= 2 {
+				targetNode = "ia3"
+				agentsToHandover = append(agentsToHandover, i)
+			}
+		} else if nodeName == "ia3-three" {
+			if agent.Position.Y <= 2 {
+				targetNode = "ia3"
+				agentsToHandover = append(agentsToHandover, i)
+			}
+		}
+	}
+
+	if len(agentsToHandover) == 0 {
+		s.interactionMu.Unlock()
+		return
+	}
+
+	for _, idx := range agentsToHandover {
+		agent := s.agents[idx]
+		targetAgent := agent
+		if targetNode == "ia3-two" && nodeName == "ia3" {
+			targetAgent.Position.X = 5
+		} else if targetNode == "ia3" && nodeName == "ia3-two" {
+			targetAgent.Position.X = 250
+		} else if targetNode == "ia3-three" && nodeName == "ia3" {
+			targetAgent.Position.Y = 5
+		} else if targetNode == "ia3" && nodeName == "ia3-three" {
+			targetAgent.Position.Y = 250
+		}
+
+		urls := []string{}
+		if targetNode == "ia3" {
+			urls = []string{"http://world-sim.ia3.svc.cluster.local:8081/control/handover-agent", "http://localhost:8081/control/handover-agent"}
+		} else if targetNode == "ia3-two" {
+			urls = []string{"http://world-sim.ia3-two.svc.cluster.local:8081/control/handover-agent", "http://localhost:18081/control/handover-agent"}
+		} else if targetNode == "ia3-three" {
+			urls = []string{"http://world-sim.ia3-three.svc.cluster.local:8081/control/handover-agent", "http://localhost:18082/control/handover-agent"}
+		}
+
+		success := false
+		client := http.Client{Timeout: 500 * time.Millisecond}
+		for _, url := range urls {
+			bodyBytes, _ := json.Marshal(targetAgent)
+			resp, err := client.Post(url, "application/json", strings.NewReader(string(bodyBytes)))
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					success = true
+					break
+				}
+			}
+		}
+
+		if success {
+			s.addEvent(fmt.Sprintf("🌐 [Sharding] Handover erfolgreich: %s verließ Sektor (%s) -> Sektor (%s)", agent.Name, nodeName, targetNode))
+			s.agents = append(s.agents[:idx], s.agents[idx+1:]...)
+			for i, val := range agentsToHandover {
+				if val > idx {
+					agentsToHandover[i]--
+				}
+			}
+		} else {
+			s.addEvent(fmt.Sprintf("⚠️ [Sharding] Handover von %s an %s fehlgeschlagen (Node unerreichbar).", agent.Name, targetNode))
+		}
+	}
+	s.interactionMu.Unlock()
 }
 
 func (s *Sim) queryMesaAgentBehavior() {

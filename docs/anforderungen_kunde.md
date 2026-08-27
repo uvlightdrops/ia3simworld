@@ -22,7 +22,7 @@ Alle erfolgreich umgesetzten Anforderungen wurden systematisch archiviert und in
 - **[x] Admin-Settings:** Schieberegler direkt auf den Dashboard-Seiten zur Steuerung der Spawnhäufigkeiten, Eventraten und der Artefakt-Qualität.
 
 ### 3. Multiplayer & Dezentrales Sharding (Nächste Schritte)
-- **[ ] Föderiertes Sharding (Sektor-Knoten):** Die Weltkarte kann nun in eigenständige, von verschiedenen Spielern gehostete Chunks (Grid-Shards) aufgeteilt werden. Ein toroidales Grenzübertritts-Protokoll ermöglicht den nahtlosen Übergang zwischen den Sektoren.
+- **[x] Föderiertes Sharding (Sektor-Knoten):** Aufteilung der Weltkarte in eigenständige Chunks (Sektor (0,0) auf `ia3`, Sektor (1,0) auf `ia3-two`, Sektor (0,1) auf `ia3-three`) mit vollautomatischem, toroidalem Handover-Grenzübertritts-Protokoll per HTTP REST API zwischen den Sim-Knoten.
 - **[ ] Föderierte Wissensgraphen:** Agenteninteressen und Kooperationsvereinbarungen werden als GraphLang-Kanten zwischen den P2P-Knoten kontinuierlich ausgetauscht.
 - **[ ] Dezentrale Brain-Nodes:** Spieler können eigene Python agent-service Instanzen bereitstellen, die die kollektive Berechnung von Agenten-Kognition unterstützen.
 

@@ -16,6 +16,7 @@ spec:
           env:
             - { name: AGENT_GRPC_ADDR, value: "agent-service:50051" }
             - { name: NATS_URL, value: "nats://nats:4222" }
+            - { name: NODE_NAME, value: "{{ .Release.Namespace }}" }
           ports:
             - { containerPort: 8081 }
 
@@ -71,6 +72,7 @@ spec:
           env:
             - { name: WORLD_SIM_URL, value: "http://world-sim:8081" }
             - { name: PORT, value: "8080" }
+            - { name: NODE_NAME, value: "{{ .Release.Namespace }}" }
             {{- if eq .Release.Namespace "ia3-two" }}
             - { name: REMOTE_GATEWAY_URL, value: "http://api-gateway.ia3:8080" }
             {{- end }}
