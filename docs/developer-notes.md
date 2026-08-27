@@ -77,7 +77,20 @@ Das gesamte System lässt sich vollautomatisch in einer lokalen Kubernetes-Umgeb
    ```
 
 5. **Entwicklung & Live-Updates (Hot-Reloading):**
-   Wenn Sie Codeänderungen am Web-Frontend vornehmen, bauen Sie das Image direkt im Minikube-Docker-Daemon und starten das Deployment neu:
+   Wenn Sie Codeänderungen vornehmen, können Sie den entsprechenden Service (oder alle Services) mit einem einzigen Befehl im Minikube-Cluster neu bauen und im Kubernetes-Deployment aktualisieren (rollout restart):
+   ```bash
+   # Einen einzelnen Service neu bauen und live schalten (z. B. das Web-Frontend):
+   ./scripts/prod/update.sh web-client  # oder: make prod-update-web
+
+   # Die Go-Simulation neu bauen und live schalten:
+   ./scripts/prod/update.sh world-sim   # oder: make prod-update-sim
+
+   # Alle Services auf einmal neu bauen und live schalten:
+   ./scripts/prod/update.sh all         # oder: make prod-update
+   ```
+   Dieses Skript baut das Docker-Image direkt im Minikube-Daemon neu, stößt ein `rollout restart` in allen aktiven Namespaces (`ia3` und `ia3-two`) an und wartet, bis die Aktualisierung erfolgreich abgeschlossen ist.
+
+   *Alternativer manueller Weg:*
    ```bash
    minikube image build -t web-client:dev apps/web-client
    minikube kubectl -- rollout restart deployment/web-client -n ia3

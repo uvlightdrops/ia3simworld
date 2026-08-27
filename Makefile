@@ -4,7 +4,7 @@ HELM_RELEASE ?= ia3-local
 CHART_PATH ?= deploy/helm/ia3-local
 VALUES ?= deploy/helm/ia3-local/values-local.yaml
 
-.PHONY: dev-up dev-down dev-status port-forward port-forward-status logs nuke proto dev-up-two dev-down-two nuke-two dev-start dev-stop dev-diagnose prod-start prod-stop prod-diagnose
+.PHONY: dev-up dev-down dev-status port-forward port-forward-status logs nuke proto dev-up-two dev-down-two nuke-two dev-start dev-stop dev-diagnose prod-start prod-stop prod-diagnose prod-update prod-update-web prod-update-sim prod-update-gateway prod-update-agent
 
 # Direct Local Development Services (Non-Kubernetes)
 dev-start:
@@ -25,6 +25,21 @@ prod-stop:
 
 prod-diagnose:
 	./scripts/prod/diagnose.sh
+
+prod-update:
+	./scripts/prod/update.sh all
+
+prod-update-web:
+	./scripts/prod/update.sh web-client
+
+prod-update-sim:
+	./scripts/prod/update.sh world-sim
+
+prod-update-gateway:
+	./scripts/prod/update.sh api-gateway
+
+prod-update-agent:
+	./scripts/prod/update.sh agent-service
 
 dev-up:
 	minikube start --cpus=4 --memory=8192
