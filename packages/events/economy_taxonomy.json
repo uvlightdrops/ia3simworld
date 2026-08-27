@@ -5,77 +5,133 @@
       "name": "Holz",
       "category": "ROHSTOFF",
       "durability": 1.0,
-      "waste_rate": 0.1
+      "wasteRate": 0.1
     },
     {
       "id": "wheat",
       "name": "Weizen",
       "category": "ROHSTOFF",
       "durability": 0.8,
-      "waste_rate": 0.05
+      "wasteRate": 0.05
     },
     {
       "id": "stone",
       "name": "Stein",
       "category": "ROHSTOFF",
       "durability": 1.0,
-      "waste_rate": 0.0
+      "wasteRate": 0.0
     },
     {
       "id": "water",
       "name": "Wasser",
       "category": "ROHSTOFF",
       "durability": 1.0,
-      "waste_rate": 0.0
+      "wasteRate": 0.0
     },
     {
-      "id": "flour",
-      "name": "Mehl",
-      "category": "VERARBEITET",
-      "durability": 0.9,
-      "waste_rate": 0.05
+      "id": "iron_ore",
+      "name": "Eisenerz",
+      "category": "ROHSTOFF",
+      "durability": 1.0,
+      "wasteRate": 0.2
     },
     {
-      "id": "bread",
-      "name": "Brot",
-      "category": "VERARBEITET",
-      "durability": 0.5,
-      "waste_rate": 0.1
+      "id": "clay",
+      "name": "Ton",
+      "category": "ROHSTOFF",
+      "durability": 1.0,
+      "wasteRate": 0.05
     },
     {
       "id": "plank",
       "name": "Holzbohlen",
       "category": "VERARBEITET",
       "durability": 1.0,
-      "waste_rate": 0.15
+      "wasteRate": 0.15
     },
     {
-      "id": "tool",
-      "name": "Werkzeug",
+      "id": "flour",
+      "name": "Mehl",
+      "category": "VERARBEITET",
+      "durability": 0.9,
+      "wasteRate": 0.05
+    },
+    {
+      "id": "clay_brick",
+      "name": "Ziegelstein",
+      "category": "VERARBEITET",
+      "durability": 1.0,
+      "wasteRate": 0.1
+    },
+    {
+      "id": "iron_ingot",
+      "name": "Eisenbarren",
+      "category": "VERARBEITET",
+      "durability": 1.0,
+      "wasteRate": 0.3
+    },
+    {
+      "id": "bread",
+      "name": "Brot",
+      "category": "VERARBEITET",
+      "durability": 0.5,
+      "wasteRate": 0.1
+    },
+    {
+      "id": "iron_tool",
+      "name": "Eisenwerkzeug",
       "category": "VERARBEITET",
       "durability": 0.95,
-      "waste_rate": 0.2
+      "wasteRate": 0.2
     },
     {
-      "id": "recipe_bread",
-      "name": "Backanleitung Brot",
+      "id": "wagon",
+      "name": "Transportwagen",
+      "category": "VERARBEITET",
+      "durability": 0.98,
+      "wasteRate": 0.1
+    },
+    {
+      "id": "parchment",
+      "name": "Pergament",
+      "category": "VERARBEITET",
+      "durability": 1.0,
+      "wasteRate": 0.05
+    },
+    {
+      "id": "recipe_book",
+      "name": "Handwerksbuch",
       "category": "KULTURGUT",
       "durability": 1.0,
-      "waste_rate": 0.0
+      "wasteRate": 0.0
     },
     {
-      "id": "philosophy_book",
+      "id": "philosophy_scroll",
       "name": "Philosophieschrift",
       "category": "KULTURGUT",
       "durability": 1.0,
-      "waste_rate": 0.0
+      "wasteRate": 0.0
+    },
+    {
+      "id": "law_tablet",
+      "name": "Gesetzestafel",
+      "category": "KULTURGUT",
+      "durability": 1.0,
+      "wasteRate": 0.0
     },
     {
       "id": "compost",
       "name": "Kompost",
       "category": "ABFALL",
       "durability": 0.4,
-      "waste_rate": 0.0
+      "wasteRate": 0.0
+    },
+    {
+      "id": "slag",
+      "name": "Schlacke",
+      "category": "ABFALL",
+      "durability": 1.0,
+      "wasteRate": 0.0
     }
   ],
   "recipes": [
@@ -89,7 +145,7 @@
         "flour": 1.0,
         "compost": 0.2
       },
-      "labor_ticks": 4
+      "laborTicks": 4
     },
     {
       "id": "baking",
@@ -102,7 +158,7 @@
         "bread": 2.0,
         "compost": 0.1
       },
-      "labor_ticks": 6
+      "laborTicks": 6
     },
     {
       "id": "sawing",
@@ -114,19 +170,104 @@
         "plank": 3.0,
         "compost": 0.3
       },
-      "labor_ticks": 3
+      "laborTicks": 3
+    },
+    {
+      "id": "clay_baking",
+      "name": "Ziegel brennen",
+      "inputs": {
+        "clay": 2.0,
+        "water": 1.0
+      },
+      "outputs": {
+        "clay_brick": 1.0
+      },
+      "laborTicks": 5
+    },
+    {
+      "id": "smelting",
+      "name": "Eisen schmelzen",
+      "inputs": {
+        "iron_ore": 2.0,
+        "wood": 1.0
+      },
+      "outputs": {
+        "iron_ingot": 1.0,
+        "slag": 0.5
+      },
+      "laborTicks": 10
     },
     {
       "id": "forging",
-      "name": "Werkzeuge schmieden",
+      "name": "Eisenwerkzeuge schmieden",
       "inputs": {
-        "stone": 2.0,
+        "iron_ingot": 2.0,
         "plank": 1.0
       },
       "outputs": {
-        "tool": 1.0
+        "iron_tool": 1.0
       },
-      "labor_ticks": 8
+      "laborTicks": 8
+    },
+    {
+      "id": "wagon_building",
+      "name": "Transportwagen bauen",
+      "inputs": {
+        "plank": 4.0,
+        "iron_ingot": 2.0
+      },
+      "outputs": {
+        "wagon": 1.0,
+        "slag": 0.5
+      },
+      "laborTicks": 12
+    },
+    {
+      "id": "parchment_making",
+      "name": "Pergament schöpfen",
+      "inputs": {
+        "wood": 2.0,
+        "water": 1.0
+      },
+      "outputs": {
+        "parchment": 2.0,
+        "compost": 0.2
+      },
+      "laborTicks": 6
+    },
+    {
+      "id": "book_binding",
+      "name": "Handwerksbuch binden",
+      "inputs": {
+        "parchment": 3.0
+      },
+      "outputs": {
+        "recipe_book": 1.0
+      },
+      "laborTicks": 8
+    },
+    {
+      "id": "philosophy_scroll_writing",
+      "name": "Philosophieschrift verfassen",
+      "inputs": {
+        "parchment": 2.0
+      },
+      "outputs": {
+        "philosophy_scroll": 1.0
+      },
+      "laborTicks": 10
+    },
+    {
+      "id": "law_tablet_codification",
+      "name": "Gesetzestafel kodifizieren",
+      "inputs": {
+        "stone": 1.0,
+        "iron_tool": 1.0
+      },
+      "outputs": {
+        "law_tablet": 1.0
+      },
+      "laborTicks": 12
     }
   ]
 }
