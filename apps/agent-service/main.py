@@ -525,6 +525,20 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
         # 6. Harvest decisions from Mesa agents and apply active law modifiers
         decisions = []
         for agent in model.mesa_agents:
+            if agent.role == "Human Explorer" or agent.agent_id.startswith("human-"):
+                # Bypass Mesa AI and keep human explorer target and status intact
+                dec = sim_pb2.AgentDecision(
+                    agent_id=agent.agent_id,
+                    target=sim_pb2.Position(x=agent.target[0], y=agent.target[1]),
+                    status=agent.status,
+                    mood=agent.mood,
+                    energy=int(agent.energy),
+                    resources=int(agent.resources),
+                    waste=int(agent.waste),
+                )
+                decisions.append(dec)
+                continue
+
             # Apply active law modifiers to agent decisions
             if "Builder Subsidy Act" in state_tracker.active_laws and agent.role == "Builder":
                 agent.resources = min(100, agent.resources + 15)

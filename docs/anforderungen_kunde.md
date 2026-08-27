@@ -22,7 +22,7 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 
 
 #### Neu
-##### GUI DONE ?  
+
 
 - **[x] Flüssige Agenten-Bewegung:** Ein LERP-basierter Modus ermöglicht das flüssige Gleiten der Agenten auf dem Canvas. Er kann über den neuen „Smooth“-Schalter im Overlay ein- und ausgeschaltet werden.
 
@@ -33,6 +33,10 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 - **[x] Startup-Fokus & Default Grid:** Die Karte passt sich beim Starten perfekt der Fenstergröße an, indem der Lade-Bug der Containermaße behoben wurde. Das Hilfsgitter (Grid) ist standardmäßig ausgeblendet.
 - **[x] Ein Regler im admin dashboard für die Geschwindigkeit der Simulation**
 - **[x] Tooltips über Kacheln zeigen typ und Status (Menge der Ressourcen, Agenten auf der Kachel) an**
+- **[ ] Die Gesetze und alles weitere was mit dem court zu tun hat, bekommt ein eigenes Dashboard "Rechtssphäre"
+- **[ ] Die Interessen und alles weitere was mit dem geistigen Leben zu tun hat, bekommt ein eigenes Dashboard "Geistesleben"
+- **[ ] Die Wirtschaft und alles weitere was mit dem wirtschaftlichen Leben zu tun hat, bekommt ein eigenes Dashboard "Wirtschaftsleben"
+
 
 ##### World
 - **[x] Fluss breiter:** Die Standard-Breite des Flusses wurde von 2 auf 4 Einheiten erhöht, um einen natürlicheren, mächtigeren Strom zu erzeugen.
@@ -40,7 +44,8 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 - **[ ] Die Welt ist prinzipiell unendlich groß, nur noch nicht definiert ("erforscht"). Die Spieler können sich in alle Richtungen bewegen und bei Bedarf werden weitere SEktoren generiert und für diese Spielerunde gespeichert und über alle nodes synchronisiert. Die Grenzen der Welt sind nicht sichtbar, aber die Koordinaten werden im Admin-Dashboard angezeigt.
 - **[ ] Agenten bewegen sich nur in einem gewissen Radius von der Heimatsiedlung. Per zufall verlassen sie den Radius und erkunden die Welt. Wenn sie wieder zurückkommen, wird das Wissen um die neuen Gebiete mit allen geteilt (courtroom). Eine Verwaltung (exekutive) führt ein Register.
 - **[ ] Die Spieler können die Agenten in der Siedlung ansprechen und Anfragen stellen.
-- **[x] Die default Geschwindigkeit ist bei ca 1h Spielzeit in zwei sekunden Echtzeit.**
+- **[ ] Die default Geschwindigkeit ist pro tick ein halbe stunde Spielzeit in einer sekunden Echtzeit.**
+- **[ ] Die NPC und HPC haben drei verschiedene Geschwindigkeiten, je nach Energielevel, pro Tick 1, 2 oder 3 tiles. 
 
 ##### Multiplayer
 - **[ ] Föderiertes Sharding (Sektor-Knoten):** Die Weltkarte kann nun in eigenständige, von verschiedenen Spielern gehostete Chunks (Grid-Shards) aufgeteilt werden. Ein toroidales Grenzübertritts-Protokoll ermöglicht den nahtlosen Übergang zwischen den Sektoren.

@@ -143,6 +143,44 @@ func main() {
 		})
 	}))
 
+	http.HandleFunc("/api/control/join-human", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/join-human"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/join-human"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/move-human", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/move-human"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/move-human"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
 	http.HandleFunc("/api/state", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		target := world + "/state"
 		remoteGatewayMutex.RLock()

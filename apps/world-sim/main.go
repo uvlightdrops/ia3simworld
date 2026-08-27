@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,6 +76,8 @@ type Agent struct {
 	SocializedCount       int        `json:"socializedCount"`
 	RefusedSocializeCount int        `json:"refusedSocializeCount"`
 	History               []string   `json:"history"`
+	HomePosition          Position   `json:"homePosition"`
+	ExploredSectors       []string   `json:"exploredSectors"`
 }
 
 func (a *Agent) addHistory(entry string) {
@@ -90,19 +93,22 @@ type WorldBounds struct {
 }
 
 type WorldState struct {
-	Running      bool            `json:"running"`
-	Tick         uint64          `json:"tick"`
-	TickRateMs   int             `json:"tickRateMs"`
-	TotalAgents  int             `json:"totalAgents"`
-	WorldSize    WorldBounds     `json:"worldSize"`
-	Terrain      [][]string      `json:"terrain"`
-	Objects      [][]WorldObject `json:"objects"`
-	Agents       []Agent         `json:"agents"`
-	Events       []string        `json:"events"`
-	LastUpdated  string          `json:"lastUpdated"`
-	GrassPolicy  string          `json:"grassPolicy"`
-	ForestPolicy string          `json:"forestPolicy"`
-	ActiveLaws   []string        `json:"activeLaws"`
+	Running           bool            `json:"running"`
+	Tick              uint64          `json:"tick"`
+	TickRateMs        int             `json:"tickRateMs"`
+	TotalAgents       int             `json:"totalAgents"`
+	WorldSize         WorldBounds     `json:"worldSize"`
+	Terrain           [][]string      `json:"terrain"`
+	Objects           [][]WorldObject `json:"objects"`
+	Agents            []Agent         `json:"agents"`
+	Events            []string        `json:"events"`
+	LastUpdated       string          `json:"lastUpdated"`
+	GrassPolicy       string          `json:"grassPolicy"`
+	ForestPolicy      string          `json:"forestPolicy"`
+	ActiveLaws        []string        `json:"activeLaws"`
+	GridOriginX       int             `json:"gridOriginX"`
+	GridOriginY       int             `json:"gridOriginY"`
+	DiscoveredSectors []string        `json:"discoveredSectors"`
 }
 
 type Sim struct {
@@ -122,6 +128,14 @@ type Sim struct {
 	grassPolicy    string
 	forestPolicy   string
 	activeLaws     []string
+
+	// Infinite World & Sectors
+	sectors        map[Position]bool
+	sectorsMu      sync.RWMutex
+	minSectorX     int
+	maxSectorX     int
+	minSectorY     int
+	maxSectorY     int
 }
 
 func NewSim() *Sim {
@@ -135,7 +149,13 @@ func NewSim() *Sim {
 		grassPolicy:    "agriculture",
 		forestPolicy:   "berries",
 		activeLaws:     []string{},
+		sectors:        make(map[Position]bool),
+		minSectorX:     0,
+		maxSectorX:     0,
+		minSectorY:     0,
+		maxSectorY:     0,
 	}
+	s.sectors[Position{X: 0, Y: 0}] = true
 	s.tickRateMs.Store(2000) // Default speed: 2000ms per tick (1 hour game time / 2s real time)
 	s.generateTerrain()
 	s.seedAgents()
@@ -639,18 +659,25 @@ func (s *Sim) seedAgents() {
 			target = position
 		}
 
+		// Perform a deep copy of interests to prevent shared slice reference bugs in Go
+		initialInterests := interests[i%len(interests)]
+		copiedInterests := make([]Interest, len(initialInterests))
+		copy(copiedInterests, initialInterests)
+
 		s.agents = append(s.agents, Agent{
-			ID:        fmt.Sprintf("agent-%d", i+1),
-			Name:      name,
-			Role:      roles[i%len(roles)],
-			Mood:      "calm",
-			Status:    "patrolling",
-			Energy:    72 + i*4,
-			Position:  position,
-			Target:    target,
-			Interests: interests[i%len(interests)],
-			Resources: 80 + (i*3)%21,
-			Waste:     5 + (i*2)%16,
+			ID:              fmt.Sprintf("agent-%d", i+1),
+			Name:            name,
+			Role:            roles[i%len(roles)],
+			Mood:            "calm",
+			Status:          "patrolling",
+			Energy:          72 + i*4,
+			Position:        position,
+			Target:          target,
+			Interests:       copiedInterests,
+			Resources:       80 + (i*3)%21,
+			Waste:           5 + (i*2)%16,
+			HomePosition:    position,
+			ExploredSectors: []string{},
 		})
 	}
 }
@@ -713,6 +740,131 @@ func main() {
 			"tickRateMs":     s.tickRateMs.Load(),
 		})
 	})
+
+	http.HandleFunc("/control/join-human", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			PlayerName string `json:"playerName"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if params.PlayerName == "" {
+			params.PlayerName = "Human Explorer"
+		}
+
+		// Check if already joined
+		var humanAgent *Agent
+		for i := range s.agents {
+			if s.agents[i].ID == "human-1" {
+				humanAgent = &s.agents[i]
+				break
+			}
+		}
+
+		if humanAgent == nil {
+			// Find a non-blocking starting position near center
+			pos := Position{X: s.worldWidth / 2, Y: s.worldHeight / 2}
+			for attempts := 0; attempts < 100; attempts++ {
+				tx := (s.worldWidth/2 + attempts) % s.worldWidth
+				ty := (s.worldHeight/2 + attempts/2) % s.worldHeight
+				terrain := s.terrain[ty][tx]
+				if terrain != string(TerrainWater) && terrain != string(TerrainRock) {
+					pos = Position{X: tx, Y: ty}
+					break
+				}
+			}
+
+			newAgent := Agent{
+				ID:              "human-1",
+				Name:            params.PlayerName,
+				Role:            "Human Explorer",
+				Mood:            "adventurous",
+				Status:          "Exploring",
+				Energy:          100,
+				Position:        pos,
+				Target:          pos,
+				Interests:       []Interest{{"nature", 70}, {"exploration", 90}},
+				Resources:       100,
+				Waste:           0,
+				HomePosition:    pos,
+				ExploredSectors: []string{},
+			}
+			s.agents = append(s.agents, newAgent)
+			s.addEvent(fmt.Sprintf("🎮 [System] Human player %s joined the simulation!", params.PlayerName))
+			humanAgent = &s.agents[len(s.agents)-1]
+		} else {
+			humanAgent.Name = params.PlayerName
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(humanAgent)
+	})
+
+	http.HandleFunc("/control/move-human", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			Direction string `json:"direction"`
+			TargetX   int    `json:"targetX"`
+			TargetY   int    `json:"targetY"`
+			UseTarget bool   `json:"useTarget"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var humanAgent *Agent
+		for i := range s.agents {
+			if s.agents[i].ID == "human-1" {
+				humanAgent = &s.agents[i]
+				break
+			}
+		}
+
+		if humanAgent == nil {
+			http.Error(w, "Human player not found. Join first!", http.StatusNotFound)
+			return
+		}
+
+		if params.UseTarget {
+			// Direct coordinate target (e.g. click on map)
+			if params.TargetX >= 0 && params.TargetX < s.worldWidth && params.TargetY >= 0 && params.TargetY < s.worldHeight {
+				humanAgent.Target = Position{X: params.TargetX, Y: params.TargetY}
+				humanAgent.Status = "Traveling"
+				s.addEvent(fmt.Sprintf("🎮 [System] Human player %s sets path to (%d, %d)", humanAgent.Name, params.TargetX, params.TargetY))
+			}
+		} else {
+			// Direct direction step (WASD / arrows)
+			dx := 0
+			dy := 0
+			switch params.Direction {
+			case "up":
+				dy = -1
+			case "down":
+				dy = 1
+			case "left":
+				dx = -1
+			case "right":
+				dx = 1
+			}
+
+			if dx != 0 || dy != 0 {
+				nx := wrap(humanAgent.Position.X+dx, s.worldWidth)
+				ny := wrap(humanAgent.Position.Y+dy, s.worldHeight)
+				terrain := s.terrain[ny][nx]
+				if terrain != string(TerrainWater) && terrain != string(TerrainRock) {
+					humanAgent.Position = Position{X: nx, Y: ny}
+					humanAgent.Target = Position{X: nx, Y: ny}
+					humanAgent.Status = "Exploring"
+					s.checkExpansion(humanAgent.Position)
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(humanAgent)
+	})
+
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.snapshot())
@@ -745,6 +897,14 @@ func (s *Sim) snapshot() WorldState {
 	copiedEvents := append([]string(nil), s.events...)
 	s.eventsMu.Unlock()
 
+	s.sectorsMu.RLock()
+	var sectorsList []string
+	for p := range s.sectors {
+		sectorsList = append(sectorsList, fmt.Sprintf("(%d, %d)", p.X, p.Y))
+	}
+	s.sectorsMu.RUnlock()
+	sort.Strings(sectorsList)
+
 	state := WorldState{
 		Running:     s.running.Load(),
 		Tick:        s.tick.Load(),
@@ -754,14 +914,17 @@ func (s *Sim) snapshot() WorldState {
 			Width:  s.worldWidth,
 			Height: s.worldHeight,
 		},
-		Terrain:      terrain,
-		Objects:      objects,
-		Agents:       make([]Agent, len(s.agents)),
-		Events:       copiedEvents,
-		LastUpdated:  time.Now().UTC().Format(time.RFC3339),
-		GrassPolicy:  s.grassPolicy,
-		ForestPolicy: s.forestPolicy,
-		ActiveLaws:   s.activeLaws,
+		Terrain:           terrain,
+		Objects:           objects,
+		Agents:            make([]Agent, len(s.agents)),
+		Events:            copiedEvents,
+		LastUpdated:       time.Now().UTC().Format(time.RFC3339),
+		GrassPolicy:       s.grassPolicy,
+		ForestPolicy:      s.forestPolicy,
+		ActiveLaws:        s.activeLaws,
+		GridOriginX:       s.minSectorX * 96,
+		GridOriginY:       s.minSectorY * 96,
+		DiscoveredSectors: sectorsList,
 	}
 	copy(state.Agents, s.agents)
 	return state
@@ -839,17 +1002,61 @@ func (s *Sim) findNearestResource(start Position, resTypes []Terrain) Position {
 func (s *Sim) advanceAgents(currentTick uint64) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(currentTick)))
 
-	// 1. Decay energy, resources and accumulate waste
+	// 1. Decay energy, resources, accumulate waste, and process interest decay/reinforcement
 	for i := range s.agents {
 		agent := &s.agents[i]
-		agent.Resources = clamp(agent.Resources - 2, 0, 100)
+		agent.Resources = clamp(agent.Resources-2, 0, 100)
 		if agent.Resources == 0 {
 			// Starvation penalty: energy decays much faster without food/water
-			agent.Energy = clamp(agent.Energy - 3, 0, 100)
+			agent.Energy = clamp(agent.Energy-3, 0, 100)
 		} else {
-			agent.Energy = clamp(agent.Energy - 1, 0, 100)
+			agent.Energy = clamp(agent.Energy-1, 0, 100)
 		}
-		agent.Waste = clamp(agent.Waste + 1, 0, 100)
+		agent.Waste = clamp(agent.Waste+1, 0, 100)
+
+		// --- Passive Interest Decay ---
+		// Every tick, there is a 20% chance that interests slowly decay by 1 point (to keep them organic and moving)
+		// We set a minimum threshold floor of 10% so they don't completely disappear.
+		if rng.Float64() < 0.20 {
+			for idx := range agent.Interests {
+				if agent.Interests[idx].Intensity > 10 {
+					agent.Interests[idx].Intensity--
+				}
+			}
+		}
+
+		// --- Active Interest Reinforcement ---
+		// Based on what the agent is currently doing (status / role), we reinforce related interests!
+		var reinforcedInterest string
+		statusLower := strings.ToLower(agent.Status)
+		if strings.Contains(statusLower, "exploring") || strings.Contains(statusLower, "scouting") || agent.Role == "Scout" {
+			reinforcedInterest = "exploration"
+		} else if strings.Contains(statusLower, "studying") || agent.Role == "Researcher" {
+			reinforcedInterest = "science"
+		} else if strings.Contains(statusLower, "trading") || strings.Contains(statusLower, "socializing") {
+			reinforcedInterest = "socializing"
+		} else if strings.Contains(statusLower, "tribunal") || strings.Contains(statusLower, "securing") || agent.Role == "Tracker" {
+			reinforcedInterest = "safety"
+		} else if strings.Contains(statusLower, "planting") || strings.Contains(statusLower, "cultivating") || strings.Contains(statusLower, "harvesting") {
+			reinforcedInterest = "nature"
+		} else if agent.Role == "Builder" || strings.Contains(statusLower, "infrastructure") {
+			reinforcedInterest = "engineering"
+		}
+
+		if reinforcedInterest != "" {
+			found := false
+			for idx := range agent.Interests {
+				if agent.Interests[idx].Name == reinforcedInterest {
+					agent.Interests[idx].Intensity = clamp(agent.Interests[idx].Intensity+2, 0, 100)
+					found = true
+					break
+				}
+			}
+			// If not found and it's a reinforced interest, we append it at intensity 15
+			if !found {
+				agent.Interests = append(agent.Interests, Interest{Name: reinforcedInterest, Intensity: 15})
+			}
+		}
 	}
 
 	// 2. Process social contagions and agreements (socializing / cooperating)
@@ -884,20 +1091,21 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 				}
 
 				if s.toroidalDistance(agent.Position, other.Position) <= 1.5 {
-					// Check for matching interests
+					// 1. Intellectual Contagion (probabilistic, slow convergence)
 					for idxA := range agent.Interests {
 						for idxB := range other.Interests {
 							if agent.Interests[idxA].Name == other.Interests[idxB].Name {
 								sharedName := agent.Interests[idxA].Name
 								avgIntensity := (agent.Interests[idxA].Intensity + other.Interests[idxB].Intensity) / 2
-								if avgIntensity > 30 {
-									// 1. Contagion: transmission of interests (intensity converges slightly upwards)
+								
+								// Contagion converges very slowly (1 point) under a 15% probability check
+								if rng.Float64() < 0.15 {
 									if agent.Interests[idxA].Intensity < other.Interests[idxB].Intensity {
-										agent.Interests[idxA].Intensity = clamp(agent.Interests[idxA].Intensity + 4, 0, 100)
-									} else if other.Interests[idxB].Intensity < agent.Interests[idxA].Intensity {
-										other.Interests[idxB].Intensity = clamp(other.Interests[idxB].Intensity + 4, 0, 100)
+										agent.Interests[idxA].Intensity = clamp(agent.Interests[idxA].Intensity+1, 0, 100)
 									}
+								}
 
+								if avgIntensity > 30 {
 									// 2. Agreements: Form cooperating mission or socialization
 									prob := 0.15
 									if s.isNearHomestead(agent.Position) || s.isNearHomestead(other.Position) {
@@ -947,6 +1155,26 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 										
 										s.addEvent(fmt.Sprintf("%s and %s formed a %s agreement about %s!", agent.Name, other.Name, agreeType, sharedName))
 									}
+								}
+							}
+						}
+					}
+
+					// 2. Social Learning: Spread completely new interests (10% chance per tick)
+					if rng.Float64() < 0.10 {
+						for _, instA := range agent.Interests {
+							if instA.Intensity > 40 {
+								foundInB := false
+								for _, instB := range other.Interests {
+									if instA.Name == instB.Name {
+										foundInB = true
+										break
+									}
+								}
+								if !foundInB {
+									other.Interests = append(other.Interests, Interest{Name: instA.Name, Intensity: 15})
+									other.addHistory(fmt.Sprintf("Learned interest '%s' from %s! 🎭 at tick %d", instA.Name, agent.Name, currentTick))
+									s.addEvent(fmt.Sprintf("💡 %s learned about %s from %s! 🎭", other.Name, instA.Name, agent.Name))
 								}
 							}
 						}
@@ -1137,53 +1365,83 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 		// Calculate path step towards target decided by Python Mesa
 		nextStep := s.findNextStep(agent.Position, agent.Target)
 		agent.Position = nextStep
-	}
 
-	// Social Infection: Spread interests between adjacent agents (dist <= 1.5)
-	for i := 0; i < len(s.agents); i++ {
-		for j := i + 1; j < len(s.agents); j++ {
-			a1 := &s.agents[i]
-			a2 := &s.agents[j]
-			if s.toroidalDistance(a1.Position, a2.Position) <= 1.5 {
-				// Share interests from a1 to a2
-				for _, inst1 := range a1.Interests {
-					if inst1.Intensity > 40 {
-						found := false
-						for k, inst2 := range a2.Interests {
-							if inst2.Name == inst1.Name {
-								found = true
-								if inst2.Intensity < inst1.Intensity {
-									a2.Interests[k].Intensity = clamp(inst2.Intensity+5, 0, 100)
-								}
-								break
-							}
-						}
-						if !found {
-							a2.Interests = append(a2.Interests, Interest{Name: inst1.Name, Intensity: 15})
-							a2.addHistory(fmt.Sprintf("Learned interest '%s' from %s! 🎭 at tick %d", inst1.Name, a1.Name, currentTick))
-							s.addEvent(fmt.Sprintf("💡 %s learned about %s from %s! 🎭", a2.Name, inst1.Name, a1.Name))
-						}
+		// 1. Invisible infinite map expansion on agent/player movement
+		s.checkExpansion(agent.Position)
+
+		// 2. Settlement radius restriction and dynamic exploration logic (only for AI agents)
+		if !strings.HasPrefix(agent.ID, "human-") && agent.Role != "Human Explorer" {
+			// Compute distance to home position
+			distToHome := math.Abs(float64(agent.Position.X-agent.HomePosition.X)) + math.Abs(float64(agent.Position.Y-agent.HomePosition.Y))
+			
+			// Decide to explore randomly
+			if agent.Status != "Exploring" && agent.Status != "Returning from exploration" {
+				// If target is too far or randomly triggered
+				tooFar := distToHome > 18.0
+				exploreProb := 0.015
+				if agent.Role == "Scout" || agent.Role == "Tracker" {
+					exploreProb = 0.03
+				}
+				if (tooFar || rng.Float64() < exploreProb) && agent.Energy > 50 {
+					agent.Status = "Exploring"
+					agent.addHistory(fmt.Sprintf("Ventured out to explore the infinite world past the settlement limits at tick %d", currentTick))
+					s.addEvent(fmt.Sprintf("🔍 Scout %s ventured out to explore the infinite world past the settlement limits!", agent.Name))
+					
+					// Set a random target far away
+					signX := 1
+					if rng.Float64() < 0.5 { signX = -1 }
+					signY := 1
+					if rng.Float64() < 0.5 { signY = -1 }
+					tx := clamp(agent.Position.X + signX*(30+rng.Intn(30)), 0, s.worldWidth-1)
+					ty := clamp(agent.Position.Y + signY*(30+rng.Intn(30)), 0, s.worldHeight-1)
+					agent.Target = Position{X: tx, Y: ty}
+				}
+			}
+
+			// While in exploration mode, track active sectors traversed
+			if agent.Status == "Exploring" {
+				absX := s.minSectorX*96 + agent.Position.X
+				absY := s.minSectorY*96 + agent.Position.Y
+				secX := int(math.Floor(float64(absX) / 96.0))
+				secY := int(math.Floor(float64(absY) / 96.0))
+				secStr := fmt.Sprintf("(%d, %d)", secX, secY)
+				
+				// Add to traversed list
+				alreadyTraversed := false
+				for _, sStr := range agent.ExploredSectors {
+					if sStr == secStr {
+						alreadyTraversed = true
+						break
 					}
 				}
-				// Share interests from a2 to a1
-				for _, inst2 := range a2.Interests {
-					if inst2.Intensity > 40 {
-						found := false
-						for k, inst1 := range a1.Interests {
-							if inst1.Name == inst2.Name {
-								found = true
-								if inst1.Intensity < inst2.Intensity {
-									a1.Interests[k].Intensity = clamp(inst1.Intensity+5, 0, 100)
-								}
-								break
-							}
+				if !alreadyTraversed {
+					agent.ExploredSectors = append(agent.ExploredSectors, secStr)
+				}
+
+				// If low energy or target reached, return home
+				if agent.Energy < 40 || (agent.Position.X == agent.Target.X && agent.Position.Y == agent.Target.Y) {
+					agent.Status = "Returning from exploration"
+					agent.Target = agent.HomePosition
+					agent.addHistory(fmt.Sprintf("Finished exploration, heading back home to share discoveries at tick %d", currentTick))
+				}
+			}
+
+			// If returning and reached home, register knowledge in executive courtroom archive
+			if agent.Status == "Returning from exploration" {
+				distToHomeNow := math.Abs(float64(agent.Position.X-agent.HomePosition.X)) + math.Abs(float64(agent.Position.Y-agent.HomePosition.Y))
+				if distToHomeNow <= 2.0 {
+					if len(agent.ExploredSectors) > 0 {
+						for _, secStr := range agent.ExploredSectors {
+							s.addEvent(fmt.Sprintf("⚖️ [Courtroom/Register] %s returned from exploration and registered Sector %s in the executive archive!", agent.Name, secStr))
 						}
-						if !found {
-							a1.Interests = append(a1.Interests, Interest{Name: inst2.Name, Intensity: 15})
-							a1.addHistory(fmt.Sprintf("Learned interest '%s' from %s! 🎭 at tick %d", inst2.Name, a2.Name, currentTick))
-							s.addEvent(fmt.Sprintf("💡 %s learned about %s from %s! 🎭", a1.Name, inst2.Name, a2.Name))
-						}
+						agent.addHistory(fmt.Sprintf("Registered %d newly discovered sectors at the courtroom tribunal archive at tick %d", len(agent.ExploredSectors), currentTick))
+						agent.ExploredSectors = []string{}
 					}
+					agent.Status = "patrolling"
+					// Choose a new patrolling target within home radius
+					tx := clamp(agent.HomePosition.X + (rng.Intn(16) - 8), 0, s.worldWidth-1)
+					ty := clamp(agent.HomePosition.Y + (rng.Intn(16) - 8), 0, s.worldHeight-1)
+					agent.Target = Position{X: tx, Y: ty}
 				}
 			}
 		}
@@ -1509,4 +1767,180 @@ func clamp(value, min, max int) int {
 	}
 	return value
 }
+
+func hash2D(x, y int) float64 {
+	h := (x*12345 + y*54321) ^ 123456789
+	h = (h ^ (h >> 15)) * 2654435761
+	h = (h ^ (h >> 13)) * 2654435761
+	return float64(h&0xfffffff) / 268435455.0
+}
+
+func (s *Sim) infiniteNoise2D(x, y float64) float64 {
+	const gridScale = 8.0
+	gx := x / gridScale
+	gy := y / gridScale
+
+	x0 := int(math.Floor(gx))
+	y0 := int(math.Floor(gy))
+	x1 := x0 + 1
+	y1 := y0 + 1
+
+	tx := gx - float64(x0)
+	ty := gy - float64(y0)
+
+	interpolate := func(a, b, t float64) float64 {
+		ft := t * math.Pi
+		f := (1.0 - math.Cos(ft)) * 0.5
+		return a*(1.0-f) + b*f
+	}
+
+	v00 := hash2D(x0, y0)
+	v10 := hash2D(x1, y0)
+	v01 := hash2D(x0, y1)
+	v11 := hash2D(x1, y1)
+
+	i1 := interpolate(v00, v10, tx)
+	i2 := interpolate(v01, v11, tx)
+	return interpolate(i1, i2, ty)
+}
+
+func (s *Sim) ensureSector(secX, secY int) {
+	s.sectorsMu.Lock()
+	defer s.sectorsMu.Unlock()
+
+	pos := Position{X: secX, Y: secY}
+	if s.sectors[pos] {
+		return // already exists
+	}
+
+	s.sectors[pos] = true
+	s.addEvent(fmt.Sprintf("[Courtroom/Register] Sector (%d, %d) has been discovered and mapped by scouts!", secX, secY))
+
+	// Recompute bounding box
+	var minX, maxX, minY, maxY int
+	first := true
+	for p := range s.sectors {
+		if first {
+			minX, maxX = p.X, p.X
+			minY, maxY = p.Y, p.Y
+			first = false
+		} else {
+			if p.X < minX { minX = p.X }
+			if p.X > maxX { maxX = p.X }
+			if p.Y < minY { minY = p.Y }
+			if p.Y > maxY { maxY = p.Y }
+		}
+	}
+
+	oldMinX, oldMinY := s.minSectorX, s.minSectorY
+	
+	s.minSectorX, s.maxSectorX = minX, maxX
+	s.minSectorY, s.maxSectorY = minY, maxY
+
+	newW := (maxX - minX + 1) * 96
+	newH := (maxY - minY + 1) * 96
+
+	// Allocate new arrays
+	newTerrain := make([][]string, newH)
+	newObjects := make([][]WorldObject, newH)
+	for y := 0; y < newH; y++ {
+		newTerrain[y] = make([]string, newW)
+		newObjects[y] = make([]WorldObject, newW)
+	}
+
+	// Calculate copy offsets
+	dx := (oldMinX - minX) * 96
+	dy := (oldMinY - minY) * 96
+
+	// Copy old terrain and objects
+	for y := 0; y < s.worldHeight; y++ {
+		for x := 0; x < s.worldWidth; x++ {
+			newTerrain[y+dy][x+dx] = s.terrain[y][x]
+			newObjects[y+dy][x+dx] = s.objects[y][x]
+		}
+	}
+
+	// Update agent positions & targets
+	for i := range s.agents {
+		s.agents[i].Position.X += dx
+		s.agents[i].Position.Y += dy
+		s.agents[i].Target.X += dx
+		s.agents[i].Target.Y += dy
+		s.agents[i].HomePosition.X += dx
+		s.agents[i].HomePosition.Y += dy
+	}
+
+	// Set s.terrain and s.objects to the new larger arrays
+	s.terrain = newTerrain
+	s.objects = newObjects
+	s.worldWidth = newW
+	s.worldHeight = newH
+
+	// Generate the new sectors
+	for p := range s.sectors {
+		s.generateSectorTerrain(p.X, p.Y)
+	}
+}
+
+func (s *Sim) generateSectorTerrain(secX, secY int) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(secX*1000+secY)))
+	for ly := 0; ly < 96; ly++ {
+		for lx := 0; lx < 96; lx++ {
+			absX := secX*96 + lx
+			absY := secY*96 + ly
+
+			gx := absX - s.minSectorX*96
+			gy := absY - s.minSectorY*96
+
+			if s.terrain[gy][gx] != "" {
+				continue // already populated
+			}
+
+			// Generate using infinite continuous noise
+			n1 := s.infiniteNoise2D(float64(absX), float64(absY))
+			n2 := s.infiniteNoise2D(float64(absX)*2.5, float64(absY)*2.5)
+			h := (n1 * 0.7) + (n2 * 0.3)
+
+			switch {
+			case h < s.lakesDensity:
+				s.terrain[gy][gx] = string(TerrainWater)
+			case h < 0.58:
+				s.terrain[gy][gx] = string(TerrainGrass)
+			case h < 0.78:
+				s.terrain[gy][gx] = string(TerrainForest)
+				if rng.Float64() < s.berriesDensity {
+					s.objects[gy][gx] = WorldObject{Type: "berries", Amount: 100, MaxAmount: 100}
+				}
+			default:
+				s.terrain[gy][gx] = string(TerrainRock)
+				s.objects[gy][gx] = WorldObject{Type: "waste_pile", Amount: 0, MaxAmount: 100}
+			}
+		}
+	}
+}
+
+func (s *Sim) checkExpansion(pos Position) {
+	// Find current sector coord of the position
+	absX := s.minSectorX*96 + pos.X
+	absY := s.minSectorY*96 + pos.Y
+
+	// Calculate which sector this absolute position lies in
+	secX := int(math.Floor(float64(absX) / 96.0))
+	secY := int(math.Floor(float64(absY) / 96.0))
+
+	// If they are near the boundary of the stitched grid, generate adjacent sectors!
+	if pos.X < 8 {
+		s.ensureSector(secX-1, secY)
+	}
+	if pos.X > s.worldWidth-8 {
+		s.ensureSector(secX+1, secY)
+	}
+	if pos.Y < 8 {
+		s.ensureSector(secX, secY-1)
+	}
+	if pos.Y > s.worldHeight-8 {
+		s.ensureSector(secX, secY+1)
+	}
+}
+
 

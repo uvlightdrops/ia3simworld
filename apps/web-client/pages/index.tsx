@@ -55,6 +55,9 @@ type WorldState = {
   grassPolicy?: string;
   forestPolicy?: string;
   activeLaws?: string[];
+  gridOriginX?: number;
+  gridOriginY?: number;
+  discoveredSectors?: string[];
 };
 
 const initialState: WorldState = {
@@ -71,6 +74,9 @@ const initialState: WorldState = {
   grassPolicy: "agriculture",
   forestPolicy: "berries",
   activeLaws: [],
+  gridOriginX: 0,
+  gridOriginY: 0,
+  discoveredSectors: ["(0, 0)"],
 };
 
 const terrainColors: Record<string, string> = {
@@ -281,6 +287,15 @@ function InteractiveWorldMap({
               }
             }
           } else {
+            // Direct map click sets human player target if human-1 exists!
+            const humanExists = state.agents.some((a) => a.id === "human-1");
+            if (humanExists) {
+              fetch(`${API}/api/control/move-human`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ useTarget: true, targetX: tx, targetY: ty }),
+              });
+            }
             setSelectedAgent(null);
           }
         }
@@ -749,7 +764,7 @@ function InteractiveWorldMap({
             }}
           >
             <div style={{ fontWeight: "bold", borderBottom: "1px solid #334155", paddingBottom: 4, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "#38bdf8" }}>Tile ({x}, {y})</span>
+              <span style={{ color: "#38bdf8" }}>Tile ({x}, {y}) [Abs: { (state.gridOriginX ?? 0) + x }, { (state.gridOriginY ?? 0) + y }]</span>
               <span style={{ color: "#cbd5e1", textTransform: "capitalize" }}>{terrain}</span>
             </div>
 
@@ -800,12 +815,71 @@ function InteractiveWorldMap({
 export default function Home() {
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"map" | "admin">("map");
+  const [activeTab, setActiveTab] = useState<"map" | "recht" | "geist" | "wirtschaft" | "admin">("map");
   const [settings, setSettings] = useState({ riverWidth: 4, lakesDensity: 0.20, berriesDensity: 0.20, tickRateMs: 2000 });
   const [remoteURL, setRemoteURL] = useState("");
   const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
   const [hasReplicaNode, setHasReplicaNode] = useState(false);
   const [ownNodeName, setOwnNodeName] = useState("ia3");
+
+  const [playerNameInput, setPlayerNameInput] = useState("");
+  const [isJoiningHuman, setIsJoiningHuman] = useState(false);
+
+  async function joinHumanPlayer() {
+    if (!playerNameInput.trim()) return;
+    setIsJoiningHuman(true);
+    try {
+      const res = await fetch(`${API}/api/control/join-human`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: playerNameInput }),
+      });
+      if (res.ok) {
+        setPlayerNameInput("");
+        await refresh();
+      }
+    } catch (error) {
+      console.error("Failed to join as human", error);
+    } finally {
+      setIsJoiningHuman(false);
+    }
+  }
+
+  // Keyboard movement listener for human player
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (activeTab !== "map") return;
+      
+      // Only trigger if not typing in an input
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      let direction = "";
+      if (key === "w" || key === "arrowup") direction = "up";
+      else if (key === "s" || key === "arrowdown") direction = "down";
+      else if (key === "a" || key === "arrowleft") direction = "left";
+      else if (key === "d" || key === "arrowright") direction = "right";
+
+      if (direction) {
+        e.preventDefault();
+        try {
+          await fetch(`${API}/api/control/move-human`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ direction }),
+          });
+          void refresh();
+        } catch (error) {
+          console.error("Failed to move human player", error);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTab, state]);
 
   async function refresh() {
     try {
@@ -1014,7 +1088,7 @@ export default function Home() {
     letterSpacing: "0.05em",
   };
 
-  const tabStyle = (tab: "map" | "admin"): CSSProperties => ({
+  const tabStyle = (tab: "map" | "recht" | "geist" | "wirtschaft" | "admin"): CSSProperties => ({
     background: activeTab === tab ? "#38bdf8" : "transparent",
     color: activeTab === tab ? "#0f172a" : "#cbd5e1",
     border: activeTab === tab ? "none" : "1px solid #334155",
@@ -1056,9 +1130,12 @@ export default function Home() {
         </div>
 
         {/* Tab Navigation in Header */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={tabStyle("map")} onClick={() => setActiveTab("map")}>Live Map Grid</button>
-          <button style={tabStyle("admin")} onClick={() => setActiveTab("admin")}>Admin Dashboard</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={tabStyle("map")} onClick={() => setActiveTab("map")}>🗺️ Live Map</button>
+          <button style={tabStyle("recht")} onClick={() => setActiveTab("recht")}>⚖️ Rechtssphäre</button>
+          <button style={tabStyle("geist")} onClick={() => setActiveTab("geist")}>📖 Geistesleben</button>
+          <button style={tabStyle("wirtschaft")} onClick={() => setActiveTab("wirtschaft")}>🌾 Wirtschaftsleben</button>
+          <button style={tabStyle("admin")} onClick={() => setActiveTab("admin")}>⚙️ Admin</button>
         </div>
 
         <div style={{ display: "flex", gap: 16, textAlign: "right" }}>
@@ -1102,9 +1179,9 @@ export default function Home() {
 
       {/* Controls Bar - Only visible in Live Map View */}
       {activeTab === "map" && (
-        connectedRemoteURL ? (
+        (connectedRemoteURL || ownNodeName !== "ia3") ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, background: "rgba(56, 189, 248, 0.1)", padding: "10px 16px", borderRadius: 8, border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 13 }}>
-            <span>🔒 Simulation controlled by Master Node: <b>{connectedRemoteURL}</b> (Observer / Client Mode)</span>
+            <span>🔒 Simulation controlled by Master Node: <b>{connectedRemoteURL || "ia3"}</b> (Observer / Client Mode)</span>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 12, marginBottom: 16, flexShrink: 0 }}>
@@ -1145,6 +1222,87 @@ export default function Home() {
           {/* Right Column: Unified Sidebar */}
           <aside style={{ display: "flex", flexDirection: "column", gap: 16, width: 380, height: "100%", overflowY: "auto", paddingRight: 4, flexShrink: 0 }}>
             
+            {/* 🎮 Playable Character (Mitmach-Modus) */}
+            <div style={{ background: "#1e293b", border: "1px dashed #eab308", borderRadius: 12, padding: 12 }}>
+              <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#eab308", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                🎮 Mitmach-Modus (Human Player)
+              </h3>
+              {state.agents.some(a => a.id === "human-1") ? (() => {
+                const me = state.agents.find(a => a.id === "human-1")!;
+                return (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: 12, marginBottom: 12 }}>
+                      <div>Name: <b style={{ color: "#eab308" }}>{me.name}</b></div>
+                      <div>Status: <span style={{ color: "#cbd5e1" }}>{me.status}</span></div>
+                      <div>Energy: <b style={{ color: "#10b981" }}>{me.energy}%</b></div>
+                      <div>Resources: <b style={{ color: "#38bdf8" }}>{me.resources}%</b></div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        Position: <b>({me.position.x}, {me.position.y})</b><br />
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                          Abs: ({ (state.gridOriginX ?? 0) + me.position.x }, { (state.gridOriginY ?? 0) + me.position.y })
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid #334155", paddingTop: 8, textAlign: "center" }}>
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>⌨️ Press WASD / Arrows or click map to move!</div>
+                      <div style={{ display: "inline-grid", gridTemplateColumns: "repeat(3, 40px)", gap: 4, justifyContent: "center" }}>
+                        <div />
+                        <button 
+                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "up" }) }).then(() => refresh())}
+                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
+                        >
+                          ▲
+                        </button>
+                        <div />
+
+                        <button 
+                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "left" }) }).then(() => refresh())}
+                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
+                        >
+                          ◀
+                        </button>
+                        <button 
+                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "down" }) }).then(() => refresh())}
+                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
+                        >
+                          ▼
+                        </button>
+                        <button 
+                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "right" }) }).then(() => refresh())}
+                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div>
+                  <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#94a3b8" }}>
+                    Betrete die Simulation als menschlicher Charakter und erkunde die unendliche Welt manuell!
+                  </p>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input 
+                      type="text" 
+                      placeholder="Dein Name..." 
+                      value={playerNameInput}
+                      onChange={(e) => setPlayerNameInput(e.target.value)}
+                      style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#fff" }}
+                    />
+                    <button 
+                      onClick={joinHumanPlayer}
+                      disabled={isJoiningHuman || !playerNameInput.trim()}
+                      style={{ background: "#eab308", color: "#000", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: "bold", cursor: "pointer" }}
+                    >
+                      {isJoiningHuman ? "Betrete..." : "Beitreten"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* 1. Active Agent Table in Sidebar (Compact) */}
             <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
               <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
@@ -1386,70 +1544,155 @@ export default function Home() {
         </div>
       )}
 
-      {/* ACTIVE TAB: ADMIN DASHBOARD */}
-      {activeTab === "admin" && (
+      {/* THREEFOLD SPHERE DASHBOARD: RECHTSSPHÄRE */}
+      {activeTab === "recht" && (
         <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, paddingBottom: 16 }}>
-          
-          {/* Left Panel: Resource Stats & Interests */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             
-            {/* Resource statistics */}
-            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
-                World Resource Statistics
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Grass Kacheln</div>
-                  <strong style={{ fontSize: 20 }}>{terrainStats.grass}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Lake/Water Kacheln</div>
-                  <strong style={{ fontSize: 20, color: "#0ea5e9" }}>{terrainStats.water}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Forest Kacheln</div>
-                  <strong style={{ fontSize: 20, color: "#10b981" }}>{terrainStats.forest}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Mountain/Rock Kacheln</div>
-                  <strong style={{ fontSize: 20, color: "#94a3b8" }}>{terrainStats.rock}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Homestead 🏡 Kacheln</div>
-                  <strong style={{ fontSize: 20, color: "#f97316" }}>{terrainStats.home}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
-                  <div style={headerLabel}>Total Road 🛣️ Kacheln</div>
-                  <strong style={{ fontSize: 20, color: "#cbd5e1" }}>{terrainStats.road}</strong>
-                </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155", gridColumn: "span 2" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={headerLabel}>Total Berries/Food in World</span>
-                    <strong style={{ color: "#10b981" }}>{totalBerries} units</strong>
+            {/* Left Panel: Active Policies & Courtroom Stance */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ⚖️ Tribunal Court Active Policies
+                </h3>
+                <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 16px 0" }}>
+                  The legal courtroom negotiates territory usage once a week (every 120 ticks) based on resource scarcity and agent needs.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, color: "#94a3b8" }}>Grassland Policy</span>
+                      <strong style={{ fontSize: 14, color: state.grassPolicy === "protected" ? "#ef4444" : "#10b981" }}>
+                        {state.grassPolicy === "protected" ? "🚫🌾 Protected (Farming Banned)" : "🌾 Agriculture (Farming Allowed)"}
+                      </strong>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+                      {state.grassPolicy === "protected" 
+                        ? "Agents are forbidden from planting new crop fields. Existing ones remain but cannot expand." 
+                        : "Builders will dynamically cultivate and plant wheat crops on vacant grass tiles."
+                      }
+                    </div>
                   </div>
-                  <div style={{ background: "#1e293b", height: 10, borderRadius: 5, overflow: "hidden" }}>
-                    <div style={{ background: "#10b981", width: `${Math.min(100, (totalBerries / (terrainStats.forest * 100)) * 100)}%`, height: "100%" }} />
+
+                  <div style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, color: "#94a3b8" }}>Forest Policy</span>
+                      <strong style={{ fontSize: 14, color: state.forestPolicy === "timber" ? "#f59e0b" : "#10b981" }}>
+                        {state.forestPolicy === "timber" ? "🪓 Timber Logging Allowed" : "🍓 Reserved for Berries"}
+                      </strong>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+                      {state.forestPolicy === "timber" 
+                        ? "Builders and scouts chop down forest tiles for wood. This depletes forestry density." 
+                        : "Forest is reserved exclusively for peaceful berry harvesting to prevent environmental decay."
+                      }
+                    </div>
                   </div>
                 </div>
-                <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155", gridColumn: "span 2" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={headerLabel}>Total Waste / Garbage Piled up</span>
-                    <strong style={{ color: "#ef4444" }}>{totalWaste} units</strong>
-                  </div>
-                  <div style={{ background: "#1e293b", height: 10, borderRadius: 5, overflow: "hidden" }}>
-                    <div style={{ background: "#ef4444", width: `${Math.min(100, (totalWaste / (terrainStats.rock * 100)) * 100)}%`, height: "100%" }} />
+              </div>
+
+              {/* Stance on Negotiations */}
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  🗳️ Democratic Voting Tendencies
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
+                    Agents dynamically change their legislative voting behaviors based on food scarcity, interest alignments, and active legislation.
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 4 }}>
+                    <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                      <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>Hunger/Scarcity Voting Stance</div>
+                      <strong style={{ fontSize: 13, color: "#10b981", display: "block", marginTop: 4 }}>🌾 Pro-Agriculture</strong>
+                    </div>
+                    <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                      <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>Abundance/Wealth Voting Stance</div>
+                      <strong style={{ fontSize: 13, color: "#38bdf8", display: "block", marginTop: 4 }}>🚫🌾 Pro-Conservation</strong>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Interest distribution and intensity matrix */}
+            {/* Right Panel: Passed Legislation & Active Laws list */}
             <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
               <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
-                Agent Interests Management
+                📜 AI Legislation & Passed Acts
               </h3>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 16px 0" }}>
+                Active laws passed by the AI "Rechtssphäre" Game Manager are replicated below. Passed laws apply permanent modifiers to agent decisions.
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {state.activeLaws && state.activeLaws.length > 0 ?
+                  state.activeLaws.map((law, idx) => {
+                    let desc = "Applies real-time modifications to agent decisions and resource sharing priorities.";
+                    if (law.includes("Equitable Resource Sharing")) {
+                      desc = "Encourages agents to actively transfer resources to nearby hungry or low-energy citizens.";
+                    } else if (law.includes("Eco-Conservation")) {
+                      desc = "Restricts high-speed logging and rewards scouts for protecting natural resource tiles.";
+                    } else if (law.includes("Builder Subsidy")) {
+                      desc = "Grants 15% energy and resource boosts to builders actively cultivating crops.";
+                    }
+                    return (
+                      <div key={idx} style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #4338ca", borderLeft: "4px solid #818cf8" }}>
+                        <strong style={{ color: "#a5b4fc", fontSize: 14, display: "block", marginBottom: 4 }}>📜 {law}</strong>
+                        <div style={{ fontSize: 12, color: "#cbd5e1" }}>{desc}</div>
+                        <span style={{ display: "inline-block", marginTop: 8, background: "#1e1b4b", border: "1px solid #4338ca", color: "#818cf8", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: "bold" }}>
+                          Status: ACTIVE Modifier
+                        </span>
+                      </div>
+                    );
+                  })
+                : (
+                  <div style={{ padding: 32, background: "#0f172a", border: "1px dashed #334155", borderRadius: 8, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                    No system-wide laws are currently active. Wait for the Rechtssphäre manager to propose court bills!
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Panel: Executive Land Registry Widget */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                🏢 Executive Land Registry (Katasteramt)
+              </h3>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 16px 0" }}>
+                The administrative exekutive registers all explored sectors to synchronize territorial knowledge across the collective.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 }}>
+                {state.discoveredSectors && state.discoveredSectors.length > 0 ? (
+                  state.discoveredSectors.map((sec, idx) => (
+                    <div key={idx} style={{ background: "#0f172a", padding: "8px 12px", borderRadius: 6, border: "1px solid #10b981", textAlign: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: "bold", color: "#10b981", display: "block" }}>🗺️ Sektor</span>
+                      <span style={{ fontSize: 13, color: "#cbd5e1" }}>{sec}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ gridColumn: "1 / -1", padding: 16, background: "#0f172a", border: "1px dashed #334155", borderRadius: 8, textAlign: "center", color: "#64748b", fontSize: 12 }}>
+                    Only the starting Sector (0, 0) is registered. Send scouts or explore past limits to map more!
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* THREEFOLD SPHERE DASHBOARD: GEISTESLEBEN */}
+      {activeTab === "geist" && (
+        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, paddingBottom: 16 }}>
+            
+            {/* Left Panel: Agent Interests Management */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                📖 Agent Intellectual Interests & Moods
+              </h3>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 16px 0" }}>
+                The AI "Geistesleben" Manager oversees spiritual, artistic, and philosophical pursuits. Interests spread via social learning proximity infection.
+              </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {state.agents.map((agent) => {
                   const c = agentColors[agent.name] ?? "#3b82f6";
@@ -1478,235 +1721,347 @@ export default function Home() {
               </div>
             </div>
 
-          </div>
+            {/* Right Panel: Relics and Spreading logs */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  ✨ Geistesleben Ancient Relics & Symbols
+                </h3>
+                <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 12px 0" }}>
+                  The Geistesleben Manager periodically spawns ancient relics on grass tiles (indicated as 📖 / spiritual symbol). Standing adjacent to relics inspires philosophy.
+                </p>
+                <div style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #334155", fontSize: 13, lineHeight: "1.5" }}>
+                  💡 <b>Social Learning Rule:</b> When agents with intense interests meet (distance &lt;= 1.5), they instantly teach each other their interests, unlocking and spreading knowledge across settlements.
+                </div>
+              </div>
 
-          {/* Right Panel: Agreements Logic & Matrix */}
-          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-            <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
-              Cooperation agreements (Vereinbarungen)
-            </h3>
-            
-            {/* Agreements definitions */}
-            <div style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #334155", marginBottom: 16 }}>
-              <h4 style={{ margin: "0 0 8px 0", color: "#38bdf8", fontSize: 14 }}>Cooperation Logic & Rules</h4>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#cbd5e1", display: "flex", flexDirection: "column", gap: 8 }}>
-                <li>
-                  <b>Socialize (Linger adjacent)</b>: When two agents with matching, highly intense interests meet, they can decide to socialise. They linger adjacent to each other for 15 ticks to share and transmute interests.
-                </li>
-                <li>
-                  <b>Mission (Joint Resource Exploration)</b>: Cooperative joint mission targeting the nearest forest layer to find, harvest, and exploration berries. They move together and complete the mission within 25 ticks.
-                </li>
-                <li>
-                  <b>Proximity Boost</b>: Agreement probability is boosted to <b>50%</b> (from 15%) when agents meet within 3 Kacheln of any Homestead (🏡).
-                </li>
-              </ul>
+              {/* Social Learning log */}
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  💡 Intellectual Infection Logs
+                </h3>
+                <div style={{ maxHeight: 220, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {state.events && state.events.filter(e => e.includes("learned about") || e.includes("absorbed the ancient relic")).length > 0 ?
+                    state.events
+                      .filter(e => e.includes("learned about") || e.includes("absorbed the ancient relic"))
+                      .map((event, idx) => (
+                        <div key={idx} style={{ padding: "6px 10px", background: "#0f172a", borderRadius: 4, borderLeft: "3px solid #eab308", color: "#cbd5e1" }}>
+                          {event}
+                        </div>
+                      ))
+                  : (
+                    <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "20px 0" }}>Waiting for intellectual discoveries and social learning contagions...</div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Currently active agreements listing */}
-            <h4 style={{ margin: "0 0 10px 0", fontSize: 14, color: "#38bdf8" }}>Currently Active Agreements</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {state.agents.some(a => a.agreement) ? (
-                state.agents
-                  .filter(a => a.agreement)
-                  .map((agent) => {
-                    const partner = state.agents.find(a => a.id === agent.agreement?.partnerId);
-                    const col1 = agentColors[agent.name] ?? "#3b82f6";
-                    const col2 = partner ? (agentColors[partner.name] ?? "#3b82f6") : "#3b82f6";
-                    return (
-                      <div 
-                        key={agent.id} 
-                        style={{ 
-                          background: "#0f172a", 
-                          padding: 12, 
-                          borderRadius: 8, 
-                          border: "1px solid #334155",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center"
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: col1 }} />
-                            <b>{agent.name}</b>
-                            <span style={{ color: "#94a3b8" }}>and</span>
-                            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: col2 }} />
-                            <b>{partner ? partner.name : agent.agreement?.partnerId}</b>
+          </div>
+        </div>
+      )}
+
+      {/* THREEFOLD SPHERE DASHBOARD: WIRTSCHAFTSLEBEN */}
+      {activeTab === "wirtschaft" && (
+        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, paddingBottom: 16 }}>
+            
+            {/* Left Panel: Resource statistics */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  🌾 Wirtschaftsleben Resource Stockpile
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Grass Kacheln</div>
+                    <strong style={{ fontSize: 20 }}>{terrainStats.grass}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Lake/Water Kacheln</div>
+                    <strong style={{ fontSize: 20, color: "#0ea5e9" }}>{terrainStats.water}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Forest Kacheln</div>
+                    <strong style={{ fontSize: 20, color: "#10b981" }}>{terrainStats.forest}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Mountain/Rock Kacheln</div>
+                    <strong style={{ fontSize: 20, color: "#94a3b8" }}>{terrainStats.rock}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Homestead 🏡 Kacheln</div>
+                    <strong style={{ fontSize: 20, color: "#f97316" }}>{terrainStats.home}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155" }}>
+                    <div style={headerLabel}>Total Road 🛣️ Kacheln</div>
+                    <strong style={{ fontSize: 20, color: "#cbd5e1" }}>{terrainStats.road}</strong>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155", gridColumn: "span 2" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={headerLabel}>Total Berries/Food in World</span>
+                      <strong style={{ color: "#10b981" }}>{totalBerries} units</strong>
+                    </div>
+                    <div style={{ background: "#1e293b", height: 10, borderRadius: 5, overflow: "hidden" }}>
+                      <div style={{ background: "#10b981", width: `${Math.min(100, (totalBerries / (terrainStats.forest * 100)) * 100)}%`, height: "100%" }} />
+                    </div>
+                  </div>
+                  <div style={{ background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #334155", gridColumn: "span 2" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={headerLabel}>Total Waste / Garbage Piled up</span>
+                      <strong style={{ color: "#ef4444" }}>{totalWaste} units</strong>
+                    </div>
+                    <div style={{ background: "#1e293b", height: 10, borderRadius: 5, overflow: "hidden" }}>
+                      <div style={{ background: "#ef4444", width: `${Math.min(100, (totalWaste / (terrainStats.rock * 100)) * 100)}%`, height: "100%" }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Climate and weather disasters log */}
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  ☀️ Climate & Weather Disaster Log
+                </h3>
+                <div style={{ maxHeight: 220, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {state.events && state.events.filter(e => e.includes("Drought") || e.includes("Locust Swarm") || e.includes("Bumper Harvest")).length > 0 ?
+                    state.events
+                      .filter(e => e.includes("Drought") || e.includes("Locust Swarm") || e.includes("Bumper Harvest"))
+                      .map((event, idx) => (
+                        <div key={idx} style={{ padding: "6px 10px", background: "#0f172a", borderRadius: 4, borderLeft: "3px solid #ef4444", color: "#cbd5e1" }}>
+                          {event}
+                        </div>
+                      ))
+                  : (
+                    <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "20px 0" }}>No physical climate or weather disasters recorded yet. Weather is currently stable.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel: Agreements Logic & Matrix */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                🤝 Cooperation Agreements (Wirtschaftliche Vereinbarungen)
+              </h3>
+              
+              <div style={{ background: "#0f172a", padding: 14, borderRadius: 8, border: "1px solid #334155", marginBottom: 16 }}>
+                <h4 style={{ margin: "0 0 8px 0", color: "#38bdf8", fontSize: 14 }}>Cooperation Logic & Rules</h4>
+                <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#cbd5e1", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <li>
+                    <b>Socialize (Linger adjacent)</b>: When two agents with matching, highly intense interests meet, they can decide to socialise. They linger adjacent to each other for 15 ticks to share and transmute interests.
+                  </li>
+                  <li>
+                    <b>Mission (Joint Resource Exploration)</b>: Cooperative joint mission targeting the nearest forest layer to find, harvest, and exploration berries. They move together and complete the mission within 25 ticks.
+                  </li>
+                  <li>
+                    <b>Proximity Boost</b>: Agreement probability is boosted to <b>50%</b> (from 15%) when agents meet within 3 Kacheln of any Homestead (🏡).
+                  </li>
+                </ul>
+              </div>
+
+              <h4 style={{ margin: "0 0 10px 0", fontSize: 14, color: "#38bdf8" }}>Currently Active Agreements</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {state.agents.some(a => a.agreement) ? (
+                  state.agents
+                    .filter(a => a.agreement)
+                    .map((agent) => {
+                      const partner = state.agents.find(a => a.id === agent.agreement?.partnerId);
+                      const col1 = agentColors[agent.name] ?? "#3b82f6";
+                      const col2 = partner ? (agentColors[partner.name] ?? "#3b82f6") : "#3b82f6";
+                      return (
+                        <div 
+                          key={agent.id} 
+                          style={{ 
+                            background: "#0f172a", 
+                            padding: 12, 
+                            borderRadius: 8, 
+                            border: "1px solid #334155",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: col1 }} />
+                              <b>{agent.name}</b>
+                              <span style={{ color: "#94a3b8" }}>and</span>
+                              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: col2 }} />
+                              <b>{partner ? partner.name : agent.agreement?.partnerId}</b>
+                            </div>
+                            <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+                              Agreement Type: <span style={{ textTransform: "uppercase", color: "#38bdf8", fontWeight: "bold" }}>{agent.agreement?.type}</span>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-                            Agreement Type: <span style={{ textTransform: "uppercase", color: "#38bdf8", fontWeight: "bold" }}>{agent.agreement?.type}</span>
+                          <div style={{ textAlign: "right" }}>
+                            <span style={{ background: "#1e1b4b", border: "1px solid #4338ca", color: "#818cf8", padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: "bold" }}>
+                              ⏱ {agent.agreement?.ticksLeft} Ticks Left
+                            </span>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <span style={{ background: "#1e1b4b", border: "1px solid #4338ca", color: "#818cf8", padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: "bold" }}>
-                            ⏱ {agent.agreement?.ticksLeft} Ticks Left
-                          </span>
-                        </div>
+                      );
+                    })
+                ) : (
+                  <div style={{ padding: 24, background: "#0f172a", border: "1px dashed #334155", borderRadius: 8, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                    No active agreements in the world right now. Let the agents explore and socialize!
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* REFACTORED SYSTEM ADMIN DASHBOARD */}
+      {activeTab === "admin" && (
+        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, paddingBottom: 16 }}>
+            
+            {/* Left Panel: Simulation Settings */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {/* Landscape & Speed Settings - Only visible for Master Node */}
+              {!connectedRemoteURL && ownNodeName === "ia3" && (
+                <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
+                  <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                    ⚙️ Simulation & Landscape Settings
+                  </h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4, fontWeight: "bold" }}>⚡ Simulation Speed (Tick Rate MS)</label>
+                      <input 
+                        type="range" 
+                        min="200" 
+                        max="4000" 
+                        step="100" 
+                        value={settings.tickRateMs ?? 2000} 
+                        onChange={(e) => updateSettings({ tickRateMs: parseInt(e.target.value) })}
+                        style={{ width: "100%", accentColor: "#eab308" }} 
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                        <span>Fast (200ms)</span>
+                        <span style={{ color: "#eab308" }}>Current: <b>{settings.tickRateMs ?? 2000}ms</b></span>
+                        <span>Slow (4000ms)</span>
                       </div>
-                    );
-                  })
-              ) : (
-                <div style={{ padding: 24, background: "#0f172a", border: "1px dashed #334155", borderRadius: 8, textAlign: "center", color: "#64748b", fontSize: 13 }}>
-                  No active agreements in the world right now. Let the agents explore and socialize!
+                    </div>
+
+                    <hr style={{ borderColor: "#334155", margin: "4px 0" }} />
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>River Width (Flussbreite)</label>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="5" 
+                        value={settings.riverWidth} 
+                        onChange={(e) => updateSettings({ riverWidth: parseInt(e.target.value) })}
+                        style={{ width: "100%", accentColor: "#38bdf8" }} 
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                        <span>Narrow (1)</span>
+                        <span>Current: <b>{settings.riverWidth}</b></span>
+                        <span>Wide (5)</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Lake Density (Seen-Dichte Threshold)</label>
+                      <input 
+                        type="range" 
+                        min="0.10" 
+                        max="0.35" 
+                        step="0.01" 
+                        value={settings.lakesDensity} 
+                        onChange={(e) => updateSettings({ lakesDensity: parseFloat(e.target.value) })}
+                        style={{ width: "100%", accentColor: "#38bdf8" }} 
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                        <span>Fewer Lakes (0.10)</span>
+                        <span>Current: <b>{settings.lakesDensity}</b></span>
+                        <span>More Lakes (0.35)</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Wildberry Density (Forest Fruit Probability)</label>
+                      <input 
+                        type="range" 
+                        min="0.05" 
+                        max="0.50" 
+                        step="0.01" 
+                        value={settings.berriesDensity} 
+                        onChange={(e) => updateSettings({ berriesDensity: parseFloat(e.target.value) })}
+                        style={{ width: "100%", accentColor: "#38bdf8" }} 
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                        <span>Scarce (0.05)</span>
+                        <span>Current: <b>{Math.round(settings.berriesDensity * 100)}%</b></span>
+                        <span>Abundant (0.50)</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={regenerate} 
+                      style={{ 
+                        marginTop: 8, 
+                        padding: "10px", 
+                        background: "#0ea5e9", 
+                        color: "#fff", 
+                        border: "none", 
+                        borderRadius: 6, 
+                        fontWeight: "bold", 
+                        cursor: "pointer",
+                        transition: "background 0.15s ease" 
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = "#0284c7")}
+                      onMouseOut={(e) => (e.currentTarget.style.background = "#0ea5e9")}
+                    >
+                      🔄 Save & Regenerate Landscape
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Landscape & Speed Settings - Only visible for Master Node */}
-            {!connectedRemoteURL && (
-              <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
-                <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>⚙️ Simulation & Landscape Settings</h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Right Panel: K8s and Multiplayer Configuration */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {/* Multiplayer / Shared World Connection */}
+              <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  🌍 Multiplayer & Shared World
+                </h3>
+                <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#94a3b8" }}>
+                  Connect to another cluster instance to play in a shared world. The current instance will fetch and control state from the remote host.
+                </p>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
-                    <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4, fontWeight: "bold" }}>⚡ Simulation Speed (Tick Rate MS)</label>
+                    <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>Remote API Gateway URL</label>
                     <input 
-                      type="range" 
-                      min="200" 
-                      max="4000" 
-                      step="100" 
-                      value={settings.tickRateMs ?? 2000} 
-                      onChange={(e) => updateSettings({ tickRateMs: parseInt(e.target.value) })}
-                      style={{ width: "100%", accentColor: "#eab308" }} 
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                      <span>Fast (200ms)</span>
-                      <span style={{ color: "#eab308" }}>Current: <b>{settings.tickRateMs ?? 2000}ms</b></span>
-                      <span>Slow (4000ms)</span>
-                    </div>
-                  </div>
-
-                  <hr style={{ borderColor: "#334155", margin: "4px 0" }} />
-
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>River Width (Flussbreite)</label>
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max="5" 
-                      value={settings.riverWidth} 
-                      onChange={(e) => updateSettings({ riverWidth: parseInt(e.target.value) })}
-                      style={{ width: "100%", accentColor: "#38bdf8" }} 
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                      <span>Narrow (1)</span>
-                      <span>Current: <b>{settings.riverWidth}</b></span>
-                      <span>Wide (5)</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Lake Density (Seen-Dichte Threshold)</label>
-                    <input 
-                      type="range" 
-                      min="0.10" 
-                      max="0.35" 
-                      step="0.01" 
-                      value={settings.lakesDensity} 
-                      onChange={(e) => updateSettings({ lakesDensity: parseFloat(e.target.value) })}
-                      style={{ width: "100%", accentColor: "#38bdf8" }} 
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                      <span>Fewer Lakes (0.10)</span>
-                      <span>Current: <b>{settings.lakesDensity}</b></span>
-                      <span>More Lakes (0.35)</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Wildberry Density (Forest Fruit Probability)</label>
-                    <input 
-                      type="range" 
-                      min="0.05" 
-                      max="0.50" 
-                      step="0.01" 
-                      value={settings.berriesDensity} 
-                      onChange={(e) => updateSettings({ berriesDensity: parseFloat(e.target.value) })}
-                      style={{ width: "100%", accentColor: "#38bdf8" }} 
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                      <span>Scarce (0.05)</span>
-                      <span>Current: <b>{Math.round(settings.berriesDensity * 100)}%</b></span>
-                      <span>Abundant (0.50)</span>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={regenerate} 
-                    style={{ 
-                      marginTop: 8, 
-                      padding: "10px", 
-                      background: "#0ea5e9", 
-                      color: "#fff", 
-                      border: "none", 
-                      borderRadius: 6, 
-                      fontWeight: "bold", 
-                      cursor: "pointer",
-                      transition: "background 0.15s ease" 
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "#0284c7")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "#0ea5e9")}
-                  >
-                    🔄 Save & Regenerate Landscape
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Multiplayer / Shared World Connection */}
-            <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
-              <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>🌍 Multiplayer & Shared World</h4>
-              <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#94a3b8" }}>
-                Connect to another cluster instance to play in a shared world. The current instance will fetch and control state from the remote host.
-              </p>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>Remote API Gateway URL</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. http://localhost:18080" 
-                    value={remoteURL} 
-                    onChange={(e) => setRemoteURL(e.target.value)}
-                    style={{ 
-                      width: "100%", 
-                      background: "#1e293b", 
-                      border: "1px solid #475569", 
-                      borderRadius: 6, 
-                      padding: "8px 10px", 
-                      color: "#f8fafc", 
-                      fontSize: 13,
-                      boxSizing: "border-box"
-                    }} 
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                  <button 
-                    onClick={() => connectMultiplayer(remoteURL)} 
-                    style={{ 
-                      flex: 1,
-                      padding: "8px 12px", 
-                      background: "#10b981", 
-                      color: "#fff", 
-                      border: "none", 
-                      borderRadius: 6, 
-                      fontWeight: "bold", 
-                      cursor: "pointer",
-                      fontSize: 13,
-                      transition: "background 0.15s ease" 
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "#059669")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "#10b981")}
-                  >
-                    Join Shared World
-                  </button>
-                  
-                  {connectedRemoteURL && (
-                    <button 
-                      onClick={() => connectMultiplayer("")} 
+                      type="text" 
+                      placeholder="e.g. http://localhost:18080" 
+                      value={remoteURL} 
+                      onChange={(e) => setRemoteURL(e.target.value)}
                       style={{ 
+                        width: "100%", 
+                        background: "#0f172a", 
+                        border: "1px solid #475569", 
+                        borderRadius: 6, 
+                        padding: "8px 10px", 
+                        color: "#f8fafc", 
+                        fontSize: 13,
+                        boxSizing: "border-box"
+                      }} 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    <button 
+                      onClick={() => connectMultiplayer(remoteURL)} 
+                      style={{ 
+                        flex: 1,
                         padding: "8px 12px", 
-                        background: "#ef4444", 
+                        background: "#10b981", 
                         color: "#fff", 
                         border: "none", 
                         borderRadius: 6, 
@@ -1715,27 +2070,48 @@ export default function Home() {
                         fontSize: 13,
                         transition: "background 0.15s ease" 
                       }}
-                      onMouseOver={(e) => (e.currentTarget.style.background = "#dc2626")}
-                      onMouseOut={(e) => (e.currentTarget.style.background = "#ef4444")}
+                      onMouseOver={(e) => (e.currentTarget.style.background = "#059669")}
+                      onMouseOut={(e) => (e.currentTarget.style.background = "#10b981")}
                     >
-                      Disconnect
+                      Join Shared World
                     </button>
-                  )}
-                </div>
+                    
+                    {connectedRemoteURL && (
+                      <button 
+                        onClick={() => connectMultiplayer("")} 
+                        style={{ 
+                          padding: "8px 12px", 
+                          background: "#ef4444", 
+                          color: "#fff", 
+                          border: "none", 
+                          borderRadius: 6, 
+                          fontWeight: "bold", 
+                          cursor: "pointer",
+                          fontSize: 13,
+                          transition: "background 0.15s ease" 
+                        }}
+                        onMouseOver={(e) => (e.currentTarget.style.background = "#dc2626")}
+                        onMouseOut={(e) => (e.currentTarget.style.background = "#ef4444")}
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
 
-                <div style={{ fontSize: 11, color: connectedRemoteURL ? "#10b981" : "#94a3b8", marginTop: 4 }}>
-                  Status: {connectedRemoteURL ? (
-                    <span>Connected to <b>{connectedRemoteURL}</b> (Shared World Mode)</span>
-                  ) : (
-                    <span>Single Player Mode (Hosting Local World)</span>
-                  )}
+                  <div style={{ fontSize: 11, color: connectedRemoteURL ? "#10b981" : "#94a3b8", marginTop: 4 }}>
+                    Status: {connectedRemoteURL ? (
+                      <span>Connected to <b>{connectedRemoteURL}</b> (Shared World Mode)</span>
+                    ) : (
+                      <span>Single Player Mode (Hosting Local World)</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
+
           </div>
         </div>
-      </div>
-    )}
+      )}
 
     </main>
   );
