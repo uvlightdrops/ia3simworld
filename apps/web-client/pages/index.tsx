@@ -79,10 +79,14 @@ type WorldState = {
   managerAThoughts?: string[];
   managerBThoughts?: string[];
   managerCThoughts?: string[];
+  generating?: boolean;
+  genProgress?: number;
 };
 
 const initialState: WorldState = {
   running: false,
+  generating: false,
+  genProgress: 0,
   tick: 0,
   tickRateMs: 500,
   totalAgents: 0,
@@ -1370,7 +1374,58 @@ export default function Home() {
   });
 
   return (
-    <main style={{ fontFamily: "sans-serif", padding: 24, background: "#0f172a", color: "#f8fafc", height: "100vh", display: "flex", flexDirection: "column", boxSizing: "border-box", overflow: "hidden" }}>
+    <main style={{ fontFamily: "sans-serif", padding: 24, background: "#0f172a", color: "#f8fafc", height: "100vh", display: "flex", flexDirection: "column", boxSizing: "border-box", overflow: "hidden", position: "relative" }}>
+      {/* 🔄 World Generation Progress Overlay */}
+      {state.generating && (
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(15, 23, 42, 0.92)",
+          backdropFilter: "blur(12px)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 9999,
+          color: "#fff",
+          textAlign: "center"
+        }}>
+          <div style={{
+            background: "#1e293b",
+            border: "1px solid #38bdf8",
+            boxShadow: "0 10px 40px rgba(56, 189, 248, 0.2)",
+            borderRadius: 16,
+            padding: "32px 40px",
+            width: 420,
+            maxWidth: "90%"
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🌍</div>
+            <h2 style={{ margin: "0 0 8px 0", color: "#38bdf8", fontSize: 20 }}>Generating Civilizational World</h2>
+            <p style={{ margin: "0 0 24px 0", fontSize: 13, color: "#94a3b8" }}>
+              Procedural terrain and sector layouts are being synthesized deterministically across all sharded nodes...
+            </p>
+            
+            {/* Progress Bar Container */}
+            <div style={{ background: "#0f172a", height: 12, borderRadius: 6, overflow: "hidden", border: "1px solid #334155", position: "relative", marginBottom: 8 }}>
+              <div style={{
+                background: "linear-gradient(90deg, #38bdf8 0%, #0284c7 100%)",
+                width: `${state.genProgress ?? 0}%`,
+                height: "100%",
+                transition: "width 0.15s ease-out"
+              }} />
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#cbd5e1" }}>
+              <span>Status: Generating Biomes...</span>
+              <strong style={{ color: "#38bdf8" }}>{state.genProgress ?? 0}%</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         html, body {
           background-color: #0f172a !important;
@@ -1390,7 +1445,58 @@ export default function Home() {
           background: #475569;
           border-radius: 3px;
         }
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
       `}</style>
+
+      {/* 🔄 WORLD GENERATION PROGRESS OVERLAY */}
+      {state.generating && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(15, 23, 42, 0.92)",
+          backdropFilter: "blur(12px)",
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 24,
+          padding: 32,
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 48, filter: "drop-shadow(0 0 12px rgba(56, 189, 248, 0.4))", animation: "pulse-glow 2s infinite ease-in-out" }}>
+              🌐
+            </span>
+            <h1 style={{ color: "#38bdf8", margin: 0, fontSize: 24, fontWeight: "bold", letterSpacing: "-0.01em" }}>
+              Civilization World is being generated
+            </h1>
+            <p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>
+              Synthesizing procedural noise sectors, rivers and resource biomes...
+            </p>
+          </div>
+
+          <div style={{ width: 400, background: "#1e293b", height: 16, borderRadius: 8, overflow: "hidden", border: "1px solid #334155", position: "relative" }}>
+            <div style={{
+              background: "linear-gradient(90deg, #38bdf8 0%, #06b6d4 100%)",
+              width: `${state.genProgress ?? 0}%`,
+              height: "100%",
+              borderRadius: 8,
+              transition: "width 0.1s ease-out",
+              boxShadow: "0 0 10px rgba(56, 189, 248, 0.5)"
+            }} />
+          </div>
+
+          <span style={{ fontSize: 16, fontWeight: "bold", fontFamily: "monospace", color: "#38bdf8" }}>
+            {state.genProgress ?? 0}%
+          </span>
+        </div>
+      )}
 
       {/* Header Panel */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid #334155", paddingBottom: 12, flexShrink: 0 }}>

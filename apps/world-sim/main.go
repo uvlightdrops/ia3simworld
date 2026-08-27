@@ -182,10 +182,14 @@ type WorldState struct {
 	ManagerAThoughts  []string          `json:"managerAThoughts"`
 	ManagerBThoughts  []string          `json:"managerBThoughts"`
 	ManagerCThoughts  []string          `json:"managerCThoughts"`
+	Generating        bool              `json:"generating"`
+	GenProgress       int               `json:"genProgress"`
 }
 
 type Sim struct {
 	running        atomic.Bool
+	generating     atomic.Bool
+	genProgress    atomic.Int32
 	tick           atomic.Uint64
 	tickRateMs     atomic.Int64
 	worldWidth     int
@@ -332,6 +336,13 @@ func (s *Sim) addEvent(msg string) {
 }
 
 func (s *Sim) generateTerrain() {
+	s.generating.Store(true)
+	s.genProgress.Store(0)
+	defer func() {
+		s.genProgress.Store(100)
+		s.generating.Store(false)
+	}()
+
 	terrain := make([][]string, s.worldHeight)
 	objects := make([][]WorldObject, s.worldHeight)
 	for y := 0; y < s.worldHeight; y++ {
@@ -437,6 +448,11 @@ func (s *Sim) generateTerrain() {
 
 	// Generate the landscape biomes using multi-frequency octaves for organic details
 	for y := 0; y < s.worldHeight; y++ {
+		// Update generation progress dynamically for smooth user feedback
+		prog := int32((float64(y) / float64(s.worldHeight)) * 95.0)
+		s.genProgress.Store(prog)
+		time.Sleep(1 * time.Millisecond)
+
 		for x := 0; x < s.worldWidth; x++ {
 			// Octave 1: Continent shape (large structures)
 			n1 := noise2D(float64(x), float64(y))
@@ -857,6 +873,24 @@ func main() {
 	})
 	http.HandleFunc("/control/regenerate", func(w http.ResponseWriter, _ *http.Request) {
 		s.generateTerrain()
+
+		// If we are the master node, broadcast to sharded peer nodes as well!
+		nodeName := getenv("NODE_NAME", "ia3")
+		if nodeName == "ia3" {
+			client := http.Client{Timeout: 1 * time.Second}
+			peerURLs := []string{
+				"http://world-sim.ia3-two.svc.cluster.local:8081/control/regenerate",
+				"http://world-sim.ia3-three.svc.cluster.local:8081/control/regenerate",
+				"http://localhost:18081/control/regenerate",
+				"http://localhost:18082/control/regenerate",
+			}
+			for _, u := range peerURLs {
+				go func(targetURL string) {
+					_, _ = client.Post(targetURL, "application/json", nil)
+				}(u)
+			}
+		}
+
 		w.WriteHeader(http.StatusNoContent)
 	})
 	http.HandleFunc("/control/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -1577,6 +1611,8 @@ func (s *Sim) snapshot() WorldState {
 		ManagerAThoughts:  s.managerAThoughts,
 		ManagerBThoughts:  s.managerBThoughts,
 		ManagerCThoughts:  s.managerCThoughts,
+		Generating:        s.generating.Load(),
+		GenProgress:       int(s.genProgress.Load()),
 	}
 	s.interactionMu.Unlock()
 	copy(state.Agents, s.agents)
