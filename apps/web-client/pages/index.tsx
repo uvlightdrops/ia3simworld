@@ -730,6 +730,7 @@ export default function Home() {
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "admin">("map");
+  const [settings, setSettings] = useState({ riverWidth: 2, lakesDensity: 0.20, berriesDensity: 0.20 });
 
   async function refresh() {
     try {
@@ -740,6 +741,32 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Failed to refresh simulation state", error);
+    }
+  }
+
+  async function fetchSettings() {
+    try {
+      const res = await fetch(`${API}/api/control/settings`);
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch settings", error);
+    }
+  }
+
+  async function updateSettings(newSettings: Partial<typeof settings>) {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    try {
+      await fetch(`${API}/api/control/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+    } catch (error) {
+      console.error("Failed to update settings", error);
     }
   }
 
@@ -772,6 +799,7 @@ export default function Home() {
 
   useEffect(() => {
     refresh();
+    fetchSettings();
 
     // Establish WebSocket connection with robust polling fallback
     const wsUrl = API.replace(/^http/, "ws") + "/api/ws";
@@ -1285,6 +1313,83 @@ export default function Home() {
               )}
             </div>
 
+            {/* Landscape settings */}
+            <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
+              <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>Landscape Generation Settings</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>River Width (Flussbreite)</label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="5" 
+                    value={settings.riverWidth} 
+                    onChange={(e) => updateSettings({ riverWidth: parseInt(e.target.value) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }} 
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                    <span>Narrow (1)</span>
+                    <span>Current: <b>{settings.riverWidth}</b></span>
+                    <span>Wide (5)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Lake Density (Seen-Dichte Threshold)</label>
+                  <input 
+                    type="range" 
+                    min="0.10" 
+                    max="0.35" 
+                    step="0.01" 
+                    value={settings.lakesDensity} 
+                    onChange={(e) => updateSettings({ lakesDensity: parseFloat(e.target.value) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }} 
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                    <span>Fewer Lakes (0.10)</span>
+                    <span>Current: <b>{settings.lakesDensity}</b></span>
+                    <span>More Lakes (0.35)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Wildberry Density (Forest Fruit Probability)</label>
+                  <input 
+                    type="range" 
+                    min="0.05" 
+                    max="0.50" 
+                    step="0.01" 
+                    value={settings.berriesDensity} 
+                    onChange={(e) => updateSettings({ berriesDensity: parseFloat(e.target.value) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }} 
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                    <span>Scarce (0.05)</span>
+                    <span>Current: <b>{Math.round(settings.berriesDensity * 100)}%</b></span>
+                    <span>Abundant (0.50)</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={regenerate} 
+                  style={{ 
+                    marginTop: 8, 
+                    padding: "10px", 
+                    background: "#0ea5e9", 
+                    color: "#fff", 
+                    border: "none", 
+                    borderRadius: 6, 
+                    fontWeight: "bold", 
+                    cursor: "pointer",
+                    transition: "background 0.15s ease" 
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = "#0284c7")}
+                  onMouseOut={(e) => (e.currentTarget.style.background = "#0ea5e9")}
+                >
+                  🔄 Save & Regenerate Landscape
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

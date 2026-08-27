@@ -237,7 +237,22 @@ class MesaSimAgent(mesa.Agent):
                     self.target = (self.agreement.target_x, self.agreement.target_y)
                 else:
                     self.mood = "focused"
-                    if self.position == self.target or self.target == (0, 0) or "patrolling" in self.status or self.status in ["seeking shelter", "traveling home to sleep", "heading to marketplace", "heading to court", "sleeping at homestead", "trading at marketplace", "attending tribunal"]:
+                    if self.status == "planting crops" and self.position == self.target:
+                        self.status = "cultivating crops (1/3)"
+                        self.target = self.position
+                    elif self.status == "cultivating crops (1/3)":
+                        self.status = "cultivating crops (2/3)"
+                        self.target = self.position
+                    elif self.status == "cultivating crops (2/3)":
+                        self.status = "cultivating crops (3/3)"
+                        self.target = self.position
+                    elif self.status == "cultivating crops (3/3)":
+                        self.status = "maintaining infrastructure"
+                        self.target = self.select_builder_target()
+                    elif self.status == "planting crops":
+                        # still moving to planting spot
+                        pass
+                    elif self.position == self.target or self.target == (0, 0) or "patrolling" in self.status or self.status in ["seeking shelter", "traveling home to sleep", "heading to marketplace", "heading to court", "sleeping at homestead", "trading at marketplace", "attending tribunal"]:
                         if self.role == "Scout":
                             self.target = self.select_scout_target()
                             if self.position != self.target:
@@ -245,11 +260,30 @@ class MesaSimAgent(mesa.Agent):
                             else:
                                 self.status = "inspecting resource"
                         elif self.role == "Builder":
-                            self.target = self.select_builder_target()
-                            if self.position != self.target:
-                                self.status = "patrolling road network"
+                            # Check if we should plant crops
+                            crop_tiles = [pos for pos, tile in self.model.terrain_map.items() if tile.terrain_type == "crops"]
+                            grass_near_homes = []
+                            if len(crop_tiles) < 15 and self.resources > 40 and self.energy > 40:
+                                # Find grass tiles that are close (within 3 steps) to any home tile
+                                homes = [pos for pos, tile in self.model.terrain_map.items() if tile.terrain_type == "home"]
+                                for g_pos, g_tile in self.model.terrain_map.items():
+                                    if g_tile.terrain_type == "grass":
+                                        for h_pos in homes:
+                                            if self.model.toroidal_distance(g_pos, h_pos) <= 3:
+                                                grass_near_homes.append(g_pos)
+                                                break
+                            if grass_near_homes:
+                                # Pick the nearest grass tile to plant crops!
+                                grass_near_homes.sort(key=lambda p: self.model.toroidal_distance(self.position, p))
+                                self.target = grass_near_homes[0]
+                                self.status = "planting crops"
+                                self.mood = "focused"
                             else:
-                                self.status = "maintaining infrastructure"
+                                self.target = self.select_builder_target()
+                                if self.position != self.target:
+                                    self.status = "patrolling road network"
+                                else:
+                                    self.status = "maintaining infrastructure"
                         elif self.role == "Researcher":
                             self.target = self.select_researcher_target()
                             if "studying at homestead" not in self.status:

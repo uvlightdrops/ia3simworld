@@ -90,22 +90,28 @@ type WorldState struct {
 }
 
 type Sim struct {
-	running     atomic.Bool
-	tick        atomic.Uint64
-	worldWidth  int
-	worldHeight int
-	terrain     [][]string
-	objects     [][]WorldObject
-	agents      []Agent
-	events      []string
-	eventsMu    sync.Mutex
+	running        atomic.Bool
+	tick           atomic.Uint64
+	worldWidth     int
+	worldHeight    int
+	riverWidth     int
+	lakesDensity   float64
+	berriesDensity float64
+	terrain        [][]string
+	objects        [][]WorldObject
+	agents         []Agent
+	events         []string
+	eventsMu       sync.Mutex
 }
 
 func NewSim() *Sim {
 	s := &Sim{
-		worldWidth:  96,
-		worldHeight: 96,
-		events:      []string{"[System] Simulation world initialized."},
+		worldWidth:     96,
+		worldHeight:    96,
+		riverWidth:     2,
+		lakesDensity:   0.20,
+		berriesDensity: 0.20,
+		events:         []string{"[System] Simulation world initialized."},
 	}
 	s.generateTerrain()
 	s.seedAgents()
@@ -182,6 +188,51 @@ func (s *Sim) generateTerrain() {
 		return interpolate(i1, i2, ty)
 	}
 
+	// Generate winding river with branching paths
+	riverX := float64(rng.Intn(s.worldWidth/3) + s.worldWidth/3)
+	riverWidth := s.riverWidth
+	if riverWidth <= 0 {
+		riverWidth = 2
+	}
+	
+	riverCoords := make(map[Position]bool)
+	branchActive := false
+	branchX := 0.0
+	branchYStart := s.worldHeight/3 + rng.Intn(s.worldHeight/3)
+	
+	for y := 0; y < s.worldHeight; y++ {
+		// Main river winds
+		riverX += math.Sin(float64(y)*0.15)*1.2 + (rng.Float64() - 0.5)*1.0
+		if riverX < 5 { riverX = 5 }
+		if riverX > float64(s.worldWidth-5) { riverX = float64(s.worldWidth-5) }
+		
+		rx := int(riverX)
+		for w := -riverWidth/2; w <= (riverWidth-1)/2; w++ {
+			nx := wrap(rx+w, s.worldWidth)
+			riverCoords[Position{X: nx, Y: y}] = true
+		}
+		
+		if y == branchYStart {
+			branchActive = true
+			branchX = riverX
+		}
+		
+		if branchActive && y > branchYStart {
+			// Branch winds towards right edge
+			progress := float64(y-branchYStart) / float64(s.worldHeight-branchYStart)
+			targetX := float64(s.worldWidth - 1)
+			branchX += (targetX-branchX)*progress*0.1 + math.Cos(float64(y)*0.2)*1.0 + (rng.Float64() - 0.5)*0.8
+			if branchX < 5 { branchX = 5 }
+			if branchX > float64(s.worldWidth-2) { branchX = float64(s.worldWidth-2) }
+			
+			bx := int(branchX)
+			for w := -riverWidth/2; w <= (riverWidth-1)/2; w++ {
+				nx := wrap(bx+w, s.worldWidth)
+				riverCoords[Position{X: nx, Y: y}] = true
+			}
+		}
+	}
+
 	// Generate the landscape biomes using multi-frequency octaves for organic details
 	for y := 0; y < s.worldHeight; y++ {
 		for x := 0; x < s.worldWidth; x++ {
@@ -196,7 +247,7 @@ func (s *Sim) generateTerrain() {
 			
 			// Map noise values to realistic, contiguous landmasses and features
 			switch {
-			case h < 0.28:
+			case h < s.lakesDensity:
 				terrain[y][x] = string(TerrainWater)    // Large, connected lakes/oceans
 				objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
 			case h < 0.58:
@@ -204,10 +255,21 @@ func (s *Sim) generateTerrain() {
 				objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
 			case h < 0.78:
 				terrain[y][x] = string(TerrainForest)   // Clustered woodlands adjacent to plains
-				objects[y][x] = WorldObject{Type: "berries", Amount: 100, MaxAmount: 100}
+				// Wildbeeren wesentlich knapper verteilen!
+				if rng.Float64() < s.berriesDensity {
+					objects[y][x] = WorldObject{Type: "berries", Amount: 100, MaxAmount: 100}
+				} else {
+					objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
+				}
 			default:
 				terrain[y][x] = string(TerrainRock)     // Massive mountain ranges in high elevation
 				objects[y][x] = WorldObject{Type: "waste_pile", Amount: 0, MaxAmount: 100}
+			}
+
+			// Override with river coords
+			if riverCoords[Position{X: x, Y: y}] {
+				terrain[y][x] = string(TerrainWater)
+				objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
 			}
 		}
 	}
@@ -486,6 +548,38 @@ func main() {
 	http.HandleFunc("/control/regenerate", func(w http.ResponseWriter, _ *http.Request) {
 		s.generateTerrain()
 		w.WriteHeader(http.StatusNoContent)
+	})
+	http.HandleFunc("/control/settings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var params struct {
+				RiverWidth     int     `json:"riverWidth"`
+				LakesDensity   float64 `json:"lakesDensity"`
+				BerriesDensity float64 `json:"berriesDensity"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if params.RiverWidth > 0 {
+				s.riverWidth = params.RiverWidth
+			}
+			if params.LakesDensity >= 0 {
+				s.lakesDensity = params.LakesDensity
+			}
+			if params.BerriesDensity >= 0 {
+				s.berriesDensity = params.BerriesDensity
+			}
+			s.addEvent("[System] Landscape settings updated.")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Method GET: return current settings
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"riverWidth":     s.riverWidth,
+			"lakesDensity":   s.lakesDensity,
+			"berriesDensity": s.berriesDensity,
+		})
 	})
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -788,6 +882,25 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			agent.Status = "sleeping at homestead"
 			agent.Mood = "satisfied"
 			s.addEvent(fmt.Sprintf("%s fell asleep cozy at the homestead 🏡", agent.Name))
+		}
+
+		// Handle planting crops
+		if agent.Status == "planting crops" && agent.Position.X == agent.Target.X && agent.Position.Y == agent.Target.Y {
+			if s.terrain[agent.Position.Y][agent.Position.X] == string(TerrainGrass) {
+				s.terrain[agent.Position.Y][agent.Position.X] = string(TerrainCrops)
+				s.objects[agent.Position.Y][agent.Position.X] = WorldObject{Type: "crops", Amount: 30, MaxAmount: 100}
+				agent.Resources = clamp(agent.Resources-10, 0, 100)
+				agent.Energy = clamp(agent.Energy-10, 0, 100)
+				s.addEvent(fmt.Sprintf("%s planted a new crop field 🌾 at (%d, %d)!", agent.Name, agent.Position.X, agent.Position.Y))
+			}
+		}
+		// Handle cultivating crops
+		if agent.Status == "cultivating crops (1/3)" || agent.Status == "cultivating crops (2/3)" || agent.Status == "cultivating crops (3/3)" {
+			if s.terrain[agent.Position.Y][agent.Position.X] == string(TerrainCrops) {
+				s.objects[agent.Position.Y][agent.Position.X].Amount = clamp(s.objects[agent.Position.Y][agent.Position.X].Amount+25, 0, 100)
+				agent.Energy = clamp(agent.Energy-5, 0, 100)
+				s.addEvent(fmt.Sprintf("%s watered and cultivated the crop field 🌾 at (%d, %d)", agent.Name, agent.Position.X, agent.Position.Y))
+			}
 		}
 
 		// Decrement active agreements on target reached/tick decay

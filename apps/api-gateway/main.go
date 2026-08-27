@@ -30,6 +30,7 @@ func main() {
 	http.HandleFunc("/api/control/start", withCORS(proxyPost(world+"/control/start")))
 	http.HandleFunc("/api/control/pause", withCORS(proxyPost(world+"/control/pause")))
 	http.HandleFunc("/api/control/regenerate", withCORS(proxyPost(world+"/control/regenerate")))
+	http.HandleFunc("/api/control/settings", withCORS(proxySettings(world+"/control/settings")))
 	http.HandleFunc("/api/state", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		resp, err := http.Get(world + "/state")
 		if err != nil {
@@ -123,6 +124,32 @@ func proxyPost(url string) http.HandlerFunc {
 		}
 		defer resp.Body.Close()
 		w.WriteHeader(resp.StatusCode)
+	}
+}
+
+func proxySettings(worldSimURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			resp, err := http.Post(worldSimURL, "application/json", r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			w.WriteHeader(resp.StatusCode)
+			_, _ = io.Copy(w, resp.Body)
+			return
+		}
+		// GET
+		resp, err := http.Get(worldSimURL)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
 	}
 }
 
