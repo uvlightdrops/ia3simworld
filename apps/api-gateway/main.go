@@ -181,6 +181,101 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	}))
 
+	http.HandleFunc("/api/control/agent-request", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/agent-request"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/agent-request"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/respond-interaction", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/respond-interaction"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/respond-interaction"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/set-auto-answer", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/set-auto-answer"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/set-auto-answer"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/update-manager-settings", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/update-manager-settings"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/update-manager-settings"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/trigger-scenario", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/trigger-scenario"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/trigger-scenario"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
 	http.HandleFunc("/api/state", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		target := world + "/state"
 		remoteGatewayMutex.RLock()

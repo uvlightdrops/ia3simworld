@@ -62,3 +62,14 @@ Eine detaillierte Beschreibung der Verhaltensregeln und des Kooperations-Datenmo
 - [ ] **Dezentraler Konsens-Algorithmus:** Leichtgewichtiger Validierungs-Mechanismus (z. B. Raft-Konsens), um Cheat-Versuche durch manipulierte Sektor-Nodes zu unterbinden.
 - [ ] **Compute-Sharing (Brain-Nodes):** Möglichkeit für Spieler, reine Berechnungs-Nodes für Agenten-Entscheidungen im globalen Netz bereitzustellen.
 
+---
+
+## 5. Augmented Reality (AR) & Real-World Geodaten-Integration
+
+### backlog Aufgaben (Offen / Geplant)
+- [ ] **Koordinaten-Projektion (Lat/Lon):** Einbindung einer mathematischen Umrechnung (z. B. Web Mercator EPSG:3857 oder UTM Zone 32N) zur Transformation von geografischen WGS84-Koordinaten in das 2D-Meter-Gitter der Engine.
+- [ ] **OpenStreetMap-Parsing (OSM):** Implementierung einer Go-Parsing-Pipeline (z. B. über das Package `github.com/qedus/osmpbf`), um Gebäude, Wege und Landmarken für Augsburg/Bayern performant einzulesen.
+- [ ] **Echtzeit-Synchronisation (Real-World Live Data):** Abfrage von Echtzeit-APIs (Wetter in Augsburg, Pegelstände von Wertach/Lech) zur dynamischen Synchronisation von Umwelteinflüssen und Agentenbewegung in der Simulationswelt.
+- [ ] **AR-Viewer Client-Anbindung:** Bereitstellen räumlicher Indizes und optimierter WebSocket-Streams für mobile AR-Endgeräte zur Visualisierung der Agenten vor Ort.
+
+

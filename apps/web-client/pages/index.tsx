@@ -58,6 +58,27 @@ type WorldState = {
   gridOriginX?: number;
   gridOriginY?: number;
   discoveredSectors?: string[];
+  activeScenario?: string;
+  scenarioState?: string;
+  scenarioTargetX?: number;
+  scenarioTargetY?: number;
+  scenarioTicksLeft?: number;
+  activeInteraction?: {
+    npcId: string;
+    npcName: string;
+    text: string;
+    options: string[];
+    ticksLeft: number;
+    requestType: string;
+  };
+  autoAnswerMode?: string;
+  relicSpawnRate?: number;
+  lawProposeRate?: number;
+  econEventRate?: number;
+  artifactQuality?: number;
+  managerAThoughts?: string[];
+  managerBThoughts?: string[];
+  managerCThoughts?: string[];
 };
 
 const initialState: WorldState = {
@@ -65,9 +86,9 @@ const initialState: WorldState = {
   tick: 0,
   tickRateMs: 500,
   totalAgents: 0,
-  worldSize: { width: 96, height: 96 },
-  terrain: Array.from({ length: 96 }, () => Array.from({ length: 96 }, () => "grass")),
-  objects: Array.from({ length: 96 }, () => Array.from({ length: 96 }, () => ({ type: "", amount: 0, maxAmount: 0 }))),
+  worldSize: { width: 256, height: 256 },
+  terrain: Array.from({ length: 256 }, () => Array.from({ length: 256 }, () => "grass")),
+  objects: Array.from({ length: 256 }, () => Array.from({ length: 256 }, () => ({ type: "", amount: 0, maxAmount: 0 }))),
   agents: [],
   events: [],
   lastUpdated: "",
@@ -77,6 +98,11 @@ const initialState: WorldState = {
   gridOriginX: 0,
   gridOriginY: 0,
   discoveredSectors: ["(0, 0)"],
+  activeScenario: "",
+  scenarioState: "",
+  scenarioTargetX: 0,
+  scenarioTargetY: 0,
+  scenarioTicksLeft: 0,
 };
 
 const terrainColors: Record<string, string> = {
@@ -479,6 +505,129 @@ function InteractiveWorldMap({
       }
     }
 
+    // DRAW FESTIVAL CAMPSITE OVERLAY
+    if (state.activeScenario === "festival" && typeof state.scenarioTargetX === "number" && typeof state.scenarioTargetY === "number") {
+      const tx = state.scenarioTargetX;
+      const ty = state.scenarioTargetY;
+      const px = tx * size + offsetX;
+      const py = ty * size + offsetY;
+
+      // Draw a cozy glowing campfire or bonfire in the center of state.scenarioTarget tile
+      const pulseRadius = size * (0.8 + 0.2 * Math.sin(Date.now() / 150));
+      const gradient = ctx.createRadialGradient(
+        px + size / 2, py + size / 2, size * 0.1,
+        px + size / 2, py + size / 2, pulseRadius
+      );
+      gradient.addColorStop(0, "rgba(249, 115, 22, 0.8)"); // Warm orange
+      gradient.addColorStop(0.5, "rgba(234, 179, 8, 0.4)"); // Bright yellow
+      gradient.addColorStop(1, "rgba(234, 88, 12, 0)"); // Fading edge
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(px + size / 2, py + size / 2, pulseRadius, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Draw bonfire logs cross structure
+      ctx.strokeStyle = "#451a03"; // Very dark brown log color
+      ctx.lineWidth = Math.max(1.5, size * 0.12);
+      ctx.beginPath();
+      // Log 1
+      ctx.moveTo(px + size * 0.3, py + size * 0.7);
+      ctx.lineTo(px + size * 0.7, py + size * 0.3);
+      // Log 2
+      ctx.moveTo(px + size * 0.3, py + size * 0.3);
+      ctx.lineTo(px + size * 0.7, py + size * 0.7);
+      ctx.stroke();
+
+      // Draw central glowing fire core (animated flame)
+      ctx.fillStyle = "#ef4444"; // Red flame base
+      ctx.beginPath();
+      ctx.moveTo(px + size * 0.5, py + size * 0.2);
+      ctx.quadraticCurveTo(px + size * 0.3, py + size * 0.55, px + size * 0.4, py + size * 0.7);
+      ctx.lineTo(px + size * 0.6, py + size * 0.7);
+      ctx.quadraticCurveTo(px + size * 0.7, py + size * 0.55, px + size * 0.5, py + size * 0.2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#f97316"; // Orange inner flame
+      ctx.beginPath();
+      ctx.moveTo(px + size * 0.5, py + size * 0.35);
+      ctx.quadraticCurveTo(px + size * 0.38, py + size * 0.58, px + size * 0.44, py + size * 0.68);
+      ctx.lineTo(px + size * 0.56, py + size * 0.68);
+      ctx.quadraticCurveTo(px + size * 0.62, py + size * 0.58, px + size * 0.5, py + size * 0.35);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#eab308"; // Yellow hot center
+      ctx.beginPath();
+      ctx.moveTo(px + size * 0.5, py + size * 0.48);
+      ctx.quadraticCurveTo(px + size * 0.44, py + size * 0.6, px + size * 0.46, py + size * 0.66);
+      ctx.lineTo(px + size * 0.54, py + size * 0.66);
+      ctx.quadraticCurveTo(px + size * 0.56, py + size * 0.6, px + size * 0.5, py + size * 0.48);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw rising fire sparks (small embers)
+      ctx.fillStyle = "#f97316";
+      const numSparks = 5;
+      for (let i = 0; i < numSparks; i++) {
+        const sparkTime = (Date.now() / 1000 + i * 0.3) % 1;
+        const sx = px + size * 0.5 + Math.sin(sparkTime * 6) * size * 0.2;
+        const sy = py + size * 0.5 - sparkTime * size * 1.1; // Spark rises up
+        const sparkRadius = Math.max(1, size * 0.05 * (1 - sparkTime));
+        ctx.beginPath();
+        ctx.arc(sx, sy, sparkRadius, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      // Draw cozy festival tents adjacent to bonfire (let's place 4 beautiful tents)
+      const drawTent = (offsetX_tiles, offsetY_tiles, colorMain, colorStripe) => {
+        const tpx = (tx + offsetX_tiles) * size + offsetX;
+        const tpy = (ty + offsetY_tiles) * size + offsetY;
+
+        // Draw tent body triangle
+        ctx.fillStyle = colorMain;
+        ctx.beginPath();
+        ctx.moveTo(tpx + size * 0.1, tpy + size * 0.85);
+        ctx.lineTo(tpx + size * 0.5, tpy + size * 0.2);
+        ctx.lineTo(tpx + size * 0.9, tpy + size * 0.85);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw colorful stripe in the middle
+        ctx.fillStyle = colorStripe;
+        ctx.beginPath();
+        ctx.moveTo(tpx + size * 0.4, tpy + size * 0.85);
+        ctx.lineTo(tpx + size * 0.5, tpy + size * 0.2);
+        ctx.lineTo(tpx + size * 0.6, tpy + size * 0.85);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw dark tent entrance flap
+        ctx.fillStyle = "#1e293b";
+        ctx.beginPath();
+        ctx.moveTo(tpx + size * 0.35, tpy + size * 0.85);
+        ctx.lineTo(tpx + size * 0.5, tpy + size * 0.5);
+        ctx.lineTo(tpx + size * 0.65, tpy + size * 0.85);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cute tent flags
+        ctx.fillStyle = "#f43f5e";
+        ctx.beginPath();
+        ctx.moveTo(tpx + size * 0.5, tpy + size * 0.2);
+        ctx.lineTo(tpx + size * 0.62, tpy + size * 0.12);
+        ctx.lineTo(tpx + size * 0.5, tpy + size * 0.15);
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      drawTent(-1, 0, "#0ea5e9", "#eab308"); // Blue & yellow tent on left
+      drawTent(1, 0, "#10b981", "#f43f5e");  // Green & pink tent on right
+      drawTent(0, -1, "#ec4899", "#ffffff"); // Pink & white tent on top
+      drawTent(0, 1, "#8b5cf6", "#f97316");  // Purple & orange tent on bottom
+    }
+
     // Render agent targets & paths
     if (showPaths) {
       state.agents.forEach((agent) => {
@@ -816,8 +965,10 @@ export default function Home() {
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedAdminAgent, setSelectedAdminAgent] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"map" | "recht" | "geist" | "wirtschaft" | "admin">("map");
+  const [activeTab, setActiveTab] = useState<"map" | "recht" | "geist" | "wirtschaft" | "admin" | "about">("map");
+  const [aboutSubTab, setAboutSubTab] = useState<string>("architecture");
   const [settings, setSettings] = useState({ riverWidth: 4, lakesDensity: 0.20, berriesDensity: 0.20, tickRateMs: 2000 });
+  const [managerSettings, setManagerSettings] = useState({ relicSpawnRate: 80, lawProposeRate: 140, econEventRate: 100, artifactQuality: 100 });
   const [remoteURL, setRemoteURL] = useState("");
   const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
   const [hasReplicaNode, setHasReplicaNode] = useState(false);
@@ -888,6 +1039,14 @@ export default function Home() {
       if (res.ok) {
         const nextState = await res.json();
         setState(nextState);
+        if (nextState.relicSpawnRate) {
+          setManagerSettings({
+            relicSpawnRate: nextState.relicSpawnRate,
+            lawProposeRate: nextState.lawProposeRate,
+            econEventRate: nextState.econEventRate,
+            artifactQuality: nextState.artifactQuality
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to refresh simulation state", error);
@@ -978,6 +1137,101 @@ export default function Home() {
     }
   }
 
+  async function triggerScenario() {
+    try {
+      const res = await fetch(`${API}/api/control/trigger-scenario`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "festival" }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        alert(`Failed to trigger scenario: ${text}`);
+      } else {
+        await refresh();
+      }
+    } catch (error) {
+      console.error("Failed to trigger scenario", error);
+      alert(`Error triggering scenario: ${error}`);
+    }
+  }
+
+  async function updateManagerSettings(newValues: Partial<typeof managerSettings>) {
+    const updated = { ...managerSettings, ...newValues };
+    setManagerSettings(updated);
+    try {
+      const res = await fetch(`${API}/api/control/update-manager-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) {
+        console.error("Failed to update manager settings");
+      }
+    } catch (error) {
+      console.error("Failed to update manager settings", error);
+    }
+  }
+
+  async function sendAgentRequest(agentId: string, requestType: string) {
+    try {
+      const res = await fetch(`${API}/api/control/agent-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, requestType }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        alert(`Anfrage fehlgeschlagen: ${text}`);
+      } else {
+        const data = await res.json();
+        alert(data.message);
+        await refresh();
+      }
+    } catch (error) {
+      console.error("Failed to send agent request", error);
+      alert(`Fehler bei der Anfrage: ${error}`);
+    }
+  }
+
+  async function respondInteraction(optionIndex: number) {
+    try {
+      const res = await fetch(`${API}/api/control/respond-interaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionIndex }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        alert(`Antwort fehlgeschlagen: ${text}`);
+      } else {
+        const data = await res.json();
+        alert(data.message);
+        await refresh();
+      }
+    } catch (error) {
+      console.error("Failed to respond to interaction", error);
+    }
+  }
+
+  async function setAutoAnswerMode(mode: string) {
+    try {
+      const res = await fetch(`${API}/api/control/set-auto-answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        alert(`Auto-Antwort-Einstellung fehlgeschlagen: ${text}`);
+      } else {
+        await refresh();
+      }
+    } catch (error) {
+      console.error("Failed to set auto answer mode", error);
+    }
+  }
+
   useEffect(() => {
     refresh();
     fetchSettings();
@@ -986,6 +1240,8 @@ export default function Home() {
     if (typeof window !== "undefined") {
       if (window.location.port === "13001") {
         setOwnNodeName("ia3-two");
+      } else if (window.location.port === "13002") {
+        setOwnNodeName("ia3-three");
       } else {
         setOwnNodeName("ia3");
       }
@@ -1089,7 +1345,7 @@ export default function Home() {
     letterSpacing: "0.05em",
   };
 
-  const tabStyle = (tab: "map" | "recht" | "geist" | "wirtschaft" | "admin"): CSSProperties => ({
+  const tabStyle = (tab: "map" | "recht" | "geist" | "wirtschaft" | "admin" | "about"): CSSProperties => ({
     background: activeTab === tab ? "#38bdf8" : "transparent",
     color: activeTab === tab ? "#0f172a" : "#cbd5e1",
     border: activeTab === tab ? "none" : "1px solid #334155",
@@ -1137,6 +1393,7 @@ export default function Home() {
           <button style={tabStyle("geist")} onClick={() => setActiveTab("geist")}>📖 Geistesleben</button>
           <button style={tabStyle("wirtschaft")} onClick={() => setActiveTab("wirtschaft")}>🌾 Wirtschaftsleben</button>
           <button style={tabStyle("admin")} onClick={() => setActiveTab("admin")}>⚙️ Admin</button>
+          <button style={tabStyle("about")} onClick={() => setActiveTab("about")}>ℹ️ About</button>
         </div>
 
         <div style={{ display: "flex", gap: 16, textAlign: "right" }}>
@@ -1177,6 +1434,147 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ACTIVE SCENARIO COZY BANNER */}
+      {state.activeScenario && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(234, 88, 12, 0.15) 100%)",
+          border: "1px solid #eab308",
+          borderRadius: 12,
+          padding: "16px 20px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 16,
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <span style={{ fontSize: 36, filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>
+              {state.scenarioState === "gathering" ? "🎪" : state.scenarioState === "active" ? "🎉" : "🚶"}
+            </span>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 11, background: "#eab308", color: "#000", fontWeight: "bold", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase" }}>
+                  Active Scenario
+                </span>
+                <span style={{ fontSize: 11, background: "#475569", color: "#cbd5e1", fontWeight: "bold", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase" }}>
+                  Phase: {state.scenarioState}
+                </span>
+              </div>
+              <h2 style={{ margin: "4px 0 2px 0", color: "#f97316", fontSize: 18, fontWeight: "bold", display: "flex", alignItems: "center", gap: 8 }}>
+                Autumn Solstice Festival 🍂
+              </h2>
+              <p style={{ margin: 0, fontSize: 13, color: "#cbd5e1", lineHeight: "1.4" }}>
+                {state.scenarioState === "gathering" && (
+                  "All AI agents have packed their bags, pooled supply resources, and are currently traveling to the designated festival grounds! Watch them gather on the map."
+                )}
+                {state.scenarioState === "active" && (
+                  "The grand Autumn Solstice celebration is underway! AI agents are gathered around a great bonfire, feasting, playing music, and crafting flower crowns. Their social, artistic, and philosophical interests are flourishing!"
+                )}
+                {state.scenarioState === "dispersing" && (
+                  "The festival has completed successfully! Agents are packing up leftover supplies and walking back home to their settlements. This historic milestone is recorded in the civilizational chronicles."
+                )}
+              </p>
+            </div>
+          </div>
+          <div style={{ textAlign: "right", minWidth: 120, borderLeft: "1px solid rgba(234, 179, 8, 0.3)", paddingLeft: 16 }}>
+            <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>Time Remaining</div>
+            {state.scenarioState === "active" ? (
+              <div style={{ fontSize: 20, fontWeight: "bold", color: "#eab308", fontFamily: "monospace" }}>
+                {state.scenarioTicksLeft} ticks
+              </div>
+            ) : (
+              <div style={{ fontSize: 14, fontWeight: "bold", color: "#cbd5e1" }}>
+                Transitioning...
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: "#a1a1aa", marginTop: 4 }}>
+              Center: ({state.scenarioTargetX}, {state.scenarioTargetY})
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💬 NPC INCOMING INTERACTIVE REQUEST / QUEST PANEL */}
+      {state.activeInteraction && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(79, 70, 229, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%)",
+          border: "2px solid #818cf8",
+          borderRadius: 12,
+          padding: "16px 20px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 16,
+          boxShadow: "0 4px 20px rgba(79, 70, 229, 0.3)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <span style={{ fontSize: 36, filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>
+              💬
+            </span>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 11, background: "#818cf8", color: "#000", fontWeight: "bold", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase" }}>
+                  Eingehende NPC-Anfrage
+                </span>
+                <span style={{ fontSize: 11, background: "#ef4444", color: "#fff", fontWeight: "bold", padding: "2px 6px", borderRadius: 4 }}>
+                  ⏳ {state.activeInteraction.ticksLeft} Ticks verbleibend
+                </span>
+              </div>
+              <h2 style={{ margin: "4px 0 2px 0", color: "#818cf8", fontSize: 18, fontWeight: "bold" }}>
+                {state.activeInteraction.npcName} spricht dich an:
+              </h2>
+              <p style={{ margin: "4px 0 12px 0", fontSize: 14, color: "#fff", fontStyle: "italic", fontWeight: "medium" }}>
+                "{state.activeInteraction.text}"
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                {state.activeInteraction.options.map((opt, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => respondInteraction(idx)}
+                    style={{
+                      background: idx === 0 ? "#10b981" : "#334155",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "8px 16px",
+                      fontSize: 12,
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "right", minWidth: 160, borderLeft: "1px solid rgba(129, 140, 248, 0.3)", paddingLeft: 16 }}>
+            <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", marginBottom: 6 }}>Auto-Antwort Modus</div>
+            <select
+              value={state.autoAnswerMode || "manual"}
+              onChange={(e) => setAutoAnswerMode(e.target.value)}
+              style={{
+                background: "#0f172a",
+                color: "#cbd5e1",
+                border: "1px solid #334155",
+                borderRadius: 4,
+                padding: "4px 8px",
+                fontSize: 11,
+                cursor: "pointer"
+              }}
+            >
+              <option value="manual">Manuell (Ablaufen lassen)</option>
+              <option value="auto_accept">Auto-Akzeptieren (Ja)</option>
+              <option value="auto_reject">Auto-Ablehnen (Nein)</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Controls Bar - Only visible in Live Map View */}
       {activeTab === "map" && (
@@ -1423,6 +1821,54 @@ export default function Home() {
                     ))}
                   </div>
 
+                  {/* 💬 Spieler-Anfragen (Interactive Quests) */}
+                  <div style={{ marginTop: 12, background: "#1e1b4b", padding: 10, borderRadius: 8, fontSize: 12, border: "1px solid #4338ca" }}>
+                    <div style={{ color: "#eab308", fontWeight: "bold", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                      💬 Spieler-Anfragen & Quests
+                    </div>
+                    {!state.agents.some(a => a.id === "human-1") ? (
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>
+                        Tritt der Simulation als "Human Player" bei, um diesem Agenten Aufgaben zu stellen!
+                      </p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <p style={{ margin: "0 0 4px 0", fontSize: 11, color: "#cbd5e1" }}>
+                          Stelle eine Anfrage (nur möglich, wenn du dich in der Nähe des Agenten befindest):
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          <button 
+                            onClick={() => sendAgentRequest(agent.id, "deliver_resources")}
+                            style={{ background: "#334155", color: "#fff", border: "1px solid #475569", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}
+                            title="Bittet den Agenten, dir 20 Rohstoffe zu liefern (benötigt >=25% Rohstoffe beim Agenten)."
+                          >
+                            📦 Ressource liefern
+                          </button>
+                          <button 
+                            onClick={() => sendAgentRequest(agent.id, "explore_together")}
+                            style={{ background: "#334155", color: "#fff", border: "1px solid #475569", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}
+                            title="Fordert den Agenten auf, mit dir auf Erkundungstour zu gehen (folgt dir für eine Weile)."
+                          >
+                            🧭 Gemeinsam erkunden
+                          </button>
+                          <button 
+                            onClick={() => sendAgentRequest(agent.id, "teach_philosophy")}
+                            style={{ background: "#334155", color: "#fff", border: "1px solid #475569", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}
+                            title="Frage den Agenten nach philosophischen Erkenntnissen, um dein eigenes Wissen zu erweitern."
+                          >
+                            📖 Weisheit lehren
+                          </button>
+                          <button 
+                            onClick={() => sendAgentRequest(agent.id, "build_crops")}
+                            style={{ background: "#334155", color: "#fff", border: "1px solid #475569", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: "bold" }}
+                            title="Bittet den Agenten, in deiner Nähe ein neues Getreidefeld anzulegen (benötigt >=30% Rohstoffe)."
+                          >
+                            🌾 Feld anlegen
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Performance metrics & Rates */}
                   <div style={{ marginTop: 12, background: "#0f172a", padding: 10, borderRadius: 8, fontSize: 12, border: "1px solid #334155" }}>
                     <div style={{ color: "#38bdf8", fontWeight: "bold", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
@@ -1656,6 +2102,47 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Rechtssphäre AI Game Manager Admin Controls */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                ⚙️ Admin: Rechtssphäre AI Manager Settings
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1", marginBottom: 6 }}>
+                    <span>Law Proposal Rate (Every X ticks):</span>
+                    <strong style={{ color: "#38bdf8" }}>{managerSettings.lawProposeRate} Ticks</strong>
+                  </label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="500"
+                    value={managerSettings.lawProposeRate}
+                    onChange={(e) => updateManagerSettings({ lawProposeRate: parseInt(e.target.value) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Rechtssphäre AI Thoughts Stream */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                🧠 Rechtssphäre AI Game Manager Thoughts
+              </h3>
+              <div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column-reverse", gap: 6 }}>
+                {state.managerBThoughts && state.managerBThoughts.length > 0 ? (
+                  state.managerBThoughts.map((thought, idx) => (
+                    <div key={idx} style={{ padding: "8px 12px", background: "#0f172a", borderRadius: 6, borderLeft: "3px solid #38bdf8", color: "#e2e8f0" }}>
+                      {thought}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>No thoughts recorded yet. Let the tick cycle begin.</div>
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
       )}
@@ -1731,6 +2218,61 @@ export default function Home() {
                       ))
                   : (
                     <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "20px 0" }}>Waiting for intellectual discoveries and social learning contagions...</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Geistesleben AI Game Manager Admin Controls */}
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  ⚙️ Admin: Geistesleben AI Manager Settings
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1", marginBottom: 6 }}>
+                      <span>Relic Spawn Rate (Every X ticks):</span>
+                      <strong style={{ color: "#38bdf8" }}>{managerSettings.relicSpawnRate} Ticks</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="500"
+                      value={managerSettings.relicSpawnRate}
+                      onChange={(e) => updateManagerSettings({ relicSpawnRate: parseInt(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#38bdf8" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1", marginBottom: 6 }}>
+                      <span>Artifact Quality Level:</span>
+                      <strong style={{ color: "#38bdf8" }}>{managerSettings.artifactQuality}%</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      value={managerSettings.artifactQuality}
+                      onChange={(e) => updateManagerSettings({ artifactQuality: parseInt(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#38bdf8" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Geistesleben AI Thoughts Stream */}
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                  🧠 Geistesleben AI Game Manager Thoughts
+                </h3>
+                <div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column-reverse", gap: 6 }}>
+                  {state.managerAThoughts && state.managerAThoughts.length > 0 ? (
+                    state.managerAThoughts.map((thought, idx) => (
+                      <div key={idx} style={{ padding: "8px 12px", background: "#0f172a", borderRadius: 6, borderLeft: "3px solid #38bdf8", color: "#e2e8f0" }}>
+                        {thought}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>No thoughts recorded yet. Let the tick cycle begin.</div>
                   )}
                 </div>
               </div>
@@ -1889,6 +2431,47 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Wirtschaftsleben AI Game Manager Admin Controls */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                ⚙️ Admin: Wirtschaftsleben AI Manager Settings
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1", marginBottom: 6 }}>
+                    <span>Economic Event Rate (Every X ticks):</span>
+                    <strong style={{ color: "#38bdf8" }}>{managerSettings.econEventRate} Ticks</strong>
+                  </label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="500"
+                    value={managerSettings.econEventRate}
+                    onChange={(e) => updateManagerSettings({ econEventRate: parseInt(e.target.value) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Wirtschaftsleben AI Thoughts Stream */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
+                🧠 Wirtschaftsleben AI Game Manager Thoughts
+              </h3>
+              <div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column-reverse", gap: 6 }}>
+                {state.managerCThoughts && state.managerCThoughts.length > 0 ? (
+                  state.managerCThoughts.map((thought, idx) => (
+                    <div key={idx} style={{ padding: "8px 12px", background: "#0f172a", borderRadius: 6, borderLeft: "3px solid #38bdf8", color: "#e2e8f0" }}>
+                      {thought}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>No thoughts recorded yet. Let the tick cycle begin.</div>
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
       )}
@@ -1999,6 +2582,68 @@ export default function Home() {
                       🔄 Save & Regenerate Landscape
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Collective Scenario Engine */}
+              {!connectedRemoteURL && ownNodeName === "ia3" && (
+                <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
+                  <h3 style={{ margin: "0 0 14px 0", color: "#eab308", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    🎭 Collective Scenario Engine
+                  </h3>
+                  <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#94a3b8" }}>
+                    Trigger and orchestrate temporary, civilization-wide scenarios. AI agents will pause their individual behaviors to collectively coordinate on these special historical events.
+                  </p>
+
+                  {state.activeScenario ? (
+                    <div style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                        <span style={{ color: "#eab308" }}><b>Scenario:</b> Autumn Solstice Festival 🍂</span>
+                        <span style={{ color: "#a1a1aa", textTransform: "capitalize" }}><b>Phase:</b> {state.scenarioState}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#cbd5e1", lineHeight: "1.4" }}>
+                        {state.scenarioState === "gathering" && "Status: AI founders are pooling resources and traveling to the celebration grounds."}
+                        {state.scenarioState === "active" && `Status: Celebrating! Burning bonfire, music, feasting. (${state.scenarioTicksLeft} Ticks Left)`}
+                        {state.scenarioState === "dispersing" && "Status: Celebration completed. AI founders are packing up and heading back home."}
+                      </div>
+                      <div style={{ height: 6, background: "#0f172a", borderRadius: 3, overflow: "hidden", marginTop: 4 }}>
+                        <div style={{
+                          height: "100%",
+                          background: "#eab308",
+                          width: state.scenarioState === "gathering" ? "33%" : state.scenarioState === "active" ? `${(state.scenarioTicksLeft / 24) * 100}%` : "80%",
+                          transition: "width 0.5s ease"
+                        }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", background: "#0f172a", padding: 10, borderRadius: 8, border: "1px solid #334155" }}>
+                        <span style={{ fontSize: 24 }}>🍂</span>
+                        <div>
+                          <b style={{ color: "#f97316", fontSize: 13 }}>Autumn Solstice Festival</b>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Duration: 24h • Type: Collective Gathering</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={triggerScenario}
+                        style={{
+                          width: "100%",
+                          padding: "10px",
+                          background: "#eab308",
+                          color: "#000",
+                          border: "none",
+                          borderRadius: 6,
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          transition: "background 0.15s ease"
+                        }}
+                        onMouseOver={(e) => (e.currentTarget.style.background = "#ca8a04")}
+                        onMouseOut={(e) => (e.currentTarget.style.background = "#eab308")}
+                      >
+                        🎉 Trigger Festival Scenario
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2232,6 +2877,201 @@ export default function Home() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* SYSTEM ABOUT / DOCUMENTATION DASHBOARD */}
+      {activeTab === "about" && (
+        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
+            <h3 style={{ margin: "0 0 10px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              ℹ️ IA3 SimWorld – Technical Documentation Center
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: "#cbd5e1", lineHeight: "1.5" }}>
+              Welcome to the simulation knowledge center. All system designs, social models, multi-node multiplayer protocols, and virtual reality bridges are cataloged below. Select a handbook section to browse the active system specs.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 24, flex: 1, minHeight: 0 }}>
+            {/* Sidebar selection for sub-document */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[
+                { id: "architecture", label: "🗺️ System & World Specs" },
+                { id: "agent-logic", label: "🧠 Agent Logic & Society" },
+                { id: "opensim", label: "🕶️ OpenSIM Integration" },
+                { id: "ar-realworld", label: "📱 AR & Real-World Specs" },
+                { id: "backlog", label: "📋 Open Backlog Tasks" }
+              ].map((doc) => {
+                const isSel = aboutSubTab === doc.id;
+                return (
+                  <button
+                    key={doc.id}
+                    onClick={() => setAboutSubTab(doc.id)}
+                    style={{
+                      background: isSel ? "#38bdf8" : "#1e293b",
+                      color: isSel ? "#0f172a" : "#cbd5e1",
+                      border: isSel ? "none" : "1px solid #334155",
+                      borderRadius: 8,
+                      padding: "12px 16px",
+                      textAlign: "left",
+                      fontWeight: "bold",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      boxShadow: isSel ? "0 4px 12px rgba(56, 189, 248, 0.25)" : "none"
+                    }}
+                  >
+                    {doc.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Document Reader Area */}
+            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 12, padding: 24, overflowY: "auto", maxHeight: "calc(100vh - 280px)" }}>
+              {aboutSubTab === "architecture" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    🗺️ System Architecture & Infinite World Specs
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: "#1e293b", borderLeft: "4px solid #38bdf8", padding: 12, borderRadius: 6 }}>
+                      <b>Startwelt-Dimensionen:</b> Die Simulation erzeugt beim Initialisieren ein komplettes OpenSIM-kompatibles Gebiet der Größe <b>256x256 Tiles (65.536 Kacheln)</b>. Das gesamte Gelände wird über mathematisches fraktales Rauschen (FBM) erzeugt.
+                    </div>
+                    
+                    <p style={{ margin: 0 }}>
+                      <b>1. Fluss- & Landschaftsmodell:</b> Ein mäandernder Hauptstrom der Breite 4 fließt von oben nach unten. Zur Seite spaltet sich ein Gabelarm ab. Isolierte Seen wurden auf ein Minimum reduziert, um zusammenhängendes Bauland zu schaffen.
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>2. Infrastruktur & A*-Navigation:</b> Marktplätze und das Tribunal (Courtroom) werden mit einem Abstands-Constraint von mindestens 10 Tiles zueinander und zu den 3 Siedlungszentren prozedural platziert. Die Navigation erfolgt toroidal über alle vier Weltenränder mittels hocheffizientem A*-Suchpfad.
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>3. Unendliche Weltexpansion (Seamless Sharding):</b> Bei Bewegung an den Randgrenzen werden automatisch angrenzende 256x256-Sektoren generiert und über das Multi-Node-Multiplayer-System synchronisiert. Die Entdeckungen werden von den Agenten im Tribunal-Register exekutiv eingepflegt.
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>4. Shared World Multiplayer:</b> Durch Verbindung zweier Port-Forward-Instanzen auf Minikube (:13000 und :13001) spiegelt der Client-Knoten den Zustand des Master-Simulators im Shared-World-Modus. Zu Sicherheitszwecken werden Steuerungselemente auf Sekundär-Knoten ausgeblendet.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {aboutSubTab === "agent-logic" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    🧠 Kognitive Agentenlogik & Soziales Drei-Gliederungsmodell
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <p style={{ margin: 0 }}>
+                      <b>1. Kognitives Verhalten (Mesa-Framework):</b> Die Agenten sind mit deterministischen, stateful Verhaltensprofilen (Scout, Builder, Researcher, Tracker) über gRPC an das Python-Mesa-Modell gekoppelt. Sie agieren nach einem 24-Stunden-Zyklus (Schlafen, Handeln auf dem Marktplatz, Erfüllung von Missionen und Tribunal-Abendsitzungen).
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>2. Interessen-Bugfix & Lebenszyklus:</b> Alle Interessen starten bei korrekten Initialwerten und entwickeln sich organisch. Ein passiver Verfall von -1% pro Tick (20% Chance, Floor 10%) interagiert mit aktivem Verstärkungslernen (+2% bei Aufgabenerfüllung) und probabilistischer sozialer Transmission (Contagion/Lernen bei Proximity).
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>3. Existenzsicherung & Hunger:</b> Der Grundverbrauch liegt bei 2 Einheiten pro Tick. Ohne Feldfrüchte-Ernte (crops) oder Beeren erleiden Agenten Hunger-Malus und verlieren 3 Energie-Einheiten pro Tick, was schnelle Erschöpfung bewirkt.
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>4. Kollektives Festival-Szenario:</b> Das Herbst-Festival veranlasst alle AI-Agenten zum Abbruch ihrer Aufgaben, um am fernen Festplatz Zelte aufzuschlagen, Musik zu spielen und am flackernden Canvas-Lagerfeuer zu schmausen (+5% Energie/Ressourcen und +3% Philosophie/Socializing/Art pro Tick). Nach 24h wandern sie heim und verfassen den civilizationsgeschichtlichen Chronicle Report.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {aboutSubTab === "opensim" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    🕶️ OpenSIM 3D-Protokoll-Interoperabilität & LSL-Brücke
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <p style={{ margin: 0 }}>
+                      <b>1. PNG-Gelände-Heightmap:</b> Eine standardisierte Grayscale-Heightmap (256x256 8-Bit) wird über <code>/state/opensim/png</code> bereitgestellt. Sie entspricht exakt dem OpenSim-Terraingitter und erlaubt direkten Import in Inworld-Regionen.
+                    </p>
+
+                    <p style={{ margin: 0 }}>
+                      <b>2. JSON-LSL-Schnittstelle:</b> Unter <code>/state/opensim/json</code> liefert das API-Gateway ein speicheroptimiertes Daten-Array aller Agenten-Koordinaten und World-Objekte skaliert auf OpenSIM-Metermessungen (256m x 256m).
+                    </p>
+
+                    <p style={{ margin: 0, fontWeight: "bold", color: "#eab308" }}>
+                      Referenz-LSL-Skript zur Replikation in OpenSim (Linden Scripting Language):
+                    </p>
+                    
+                    <pre style={{ background: "#1e293b", padding: 12, borderRadius: 6, fontSize: 11, fontFamily: "monospace", overflowX: "auto", border: "1px solid #334155", color: "#10b981" }}>
+{`default {
+    state_entry() {
+        llSetTimerEvent(5.0); // Poll simulator every 5s
+    }
+    timer() {
+        llHTTPRequest("http://YOUR_GATEWAY_URL/api/state/opensim/json", [], "");
+    }
+    http_response(key id, integer status, list meta, string body) {
+        if (status == 200) {
+            list parsed = llJson2List(body);
+            // Rezzes or updates dynamic agents in the 3D grid
+        }
+    }
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {aboutSubTab === "ar-realworld" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    📱 Augmented Reality (AR) & Realwelt-Anbindung (Augsburg/Bayern)
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <p style={{ margin: 0 }}>
+                      <b>1. Realwelt-Geodaten:</b> Durch Einlesen hochauflösender DGM-Geländehöhendaten der Bayerischen Vermessungsverwaltung (OpenData Bayern) lässt sich das exakte Terrain von Augsburg prozedural in unsere 256x256-Sektoren gießen.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <b>2. OpenStreetMap Vektor-Schnittstelle:</b> Eine geplante Go-Parsing-Pipeline auf Basis von <code>github.com/qedus/osmpbf</code> liest Gebäude, Straßen und Landmarken (z. B. Rathausplatz Augsburg) direkt ein, um sie als Navigationsnetz für die Agenten und reale 3D-Kollisionsobjekte abzubilden.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <b>3. WGS84 Koordinatentransformation:</b> Umrechnung von Längen- und Breitengraden (Lat/Lon) in das lokale 2D-Meter-Gitter der Engine (EPSG:3857/Web Mercator oder UTM Zone 32N), sodass Agentenbewegungen zentimetergenau mit echten Geokoordinaten korrelieren.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <b>4. Live-Sensoren & Wetter-Sychronisation:</b> Einbindung von Live-APIs zur Synchronisation des echten Wetters in Augsburg sowie Pegelstände von Lech und Wertach, um Dürren oder reiche Ernten in Echtzeit in der Dreigliederungssimulation widerzuspiegeln.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {aboutSubTab === "backlog" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    📋 Offenes Kunden-Backlog (Anforderungen)
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ padding: 10, background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 6 }}>
+                      <b>[✓] Interaktive Anfragen (Phase A):</b> Spieler können Agenten ansprechen und interaktive Aufgaben/Quests stellen (Ressource liefern, gemeinsam erkunden, Weisheit lehren, Feld anlegen).
+                    </div>
+                    <div style={{ padding: 10, background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 6 }}>
+                      <b>[✓] Energieabhängige Geschwindigkeiten:</b> Agenten und Spieler bewegen sich pro Tick 1, 2 oder 3 Tiles weit, gesteuert über ihr aktuelles Energielevel.
+                    </div>
+                    <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
+                      <b>[ ] Föderiertes Sharding (Sektor-Knoten):</b> Aufteilen der Weltkarte in eigenständige, dezentral gehostete Sektoren-Knoten.
+                    </div>
+                    <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
+                      <b>[ ] Föderierte Wissensgraphen:</b> Kontinuierlicher dezentraler Austausch von Agenteninteressen als semantische GraphLang-Kanten.
+                    </div>
+                    <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
+                      <b>[ ] Dezentrale Brain-Nodes:</b> Bereitstellen dezentraler Python agent-service Instanzen zur Kognitionsberechnung.
+                    </div>
+                    <div style={{ padding: 10, background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 6 }}>
+                      <b>[ ] AR & Realwelt-Anbindung (Augsburg/Bayern):</b> Mathematische WGS84-Transformation, osmpbf-Parsing von Augsburg-Gebäuden und Live-Wetter/Sensorkopplung.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

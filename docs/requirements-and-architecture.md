@@ -9,14 +9,24 @@ Dieses Dokument dokumentiert alle fachlichen Anforderungen, die getroffenen Arch
 Seit Projektbeginn wurden folgende Anforderungen an das System gestellt und implementiert:
 
 ### Welt- und Landschaftsgestaltung
-- **Erweiterte Weltgröße:** Die Karte wurde von der ursprünglichen Skelettgröße (24x18) über 48x36 schließlich auf ein großzügiges **96x96-Raster** skaliert (9216 Kacheln). Dies bietet eine quadratische, weite Welt für die Simulation.
-- **Gehöfte und Siedlungen:** Es wurden 3 prozedurale Gehöfte (`home` / `🏡`) als Siedlungszentren platziert, die soziale Interaktionen und die Regeneration der Agenten (Schlafen bei Erschöpfung) steuern.
-- **Organischer Geländegenerator:** Anstelle von rein zufälligen Tiles wurde ein **2D-Value-Noise-Generator** mit Kosinus-Interpolation und fraktalen Oktaven (Fractional Brownian Motion, FBM) implementiert, um zusammenhängende, realistische Kontinente, Seen, Wälder und Gebirgszüge zu generieren.
-- **Prozedurales Straßennetz:** Einbindung von Wegen (`road` / `🛣️`), die über toroidales A* die 3 Siedlungszentren kollisionsfrei miteinander verbinden.
-- **Dynamische, nachwachsende Ressourcen:** Wälder tragen Beeren (`berries`), die von Agenten geerntet werden (woraufhin sie schrumpfen) und im 8-Tick-Rhythmus nachwachsen.
-- **Biologischer Abfallabbau:** An Felsen können Agenten ihren Abfall entsorgen. Es bilden sich Müllberge (`waste_pile`), die sich biologisch abbauen.
-- **Regenerierung:** Ein Button in der UI ermöglicht es, das Gelände der Welt im laufenden Betrieb neu zu generieren.
-- **Visualisierung im Nachtmodus:** Die gesamte UI sowie der leere äußere Rahmen wurden komplett in ein dunkles Nacht-Theme (`#0f172a`) überführt.
+- **Standard-OpenSIM-Startwelt (256x256):** Die Simulation erzeugt beim Start direkt ein komplettes, standardkonformes OpenSIM-Gebiet der Größe **256x256 Kacheln (Tiles)**. Dies garantiert eine hochauflösende 1-zu-1-Kopplung mit virtuellen 3D-Welten.
+- **Gehöfte und Siedlungen:** Es wurden prozedurale Gehöfte (`home` / `🏡`) als Siedlungszentren platziert, die soziale Interaktionen und die Regeneration der Agenten (Schlafen bei Erschöpfung) steuern.
+- **Mäandernder Fluss mit Gabelung:** Ein majestätischer Hauptstrom der Breite 4 windet sich prozedural von oben nach unten durch das Gelände, inklusive eines Seitenarms (Gabelung), der sich organisch zur Seite hin abspaltet.
+- **Reduzierte Seen:** Die Anzahl isolierter, störender Seen wurde verringert, um mehr zusammenhängendes Bauland zu schaffen.
+- **Abstands-Constraint für Infrastrukturen:** Marktplatz (`market` / `🛒`) und Gerichtshof (`court` / `⚖️`) werden automatisch in einem systematischen Abstand von mindestens 10 Einheiten zueinander und zu allen Siedlungszentren platziert.
+- **Organischer Geländegenerator:** Ein kontinuierlicher **2D-Value-Noise-Generator** mit Kosinus-Interpolation und fraktalen Oktaven (FBM) erzeugt prozedural zusammenhängende Landschaften.
+- **Prozedurales Straßennetz:** Einbindung von Wegen (`road` / `🛣️`), die über toroidales A* die Siedlungszentren kollisionsfrei verbinden.
+- **Dynamische Ressourcen & Landwirtschaft:**
+  - **Felder anlegen:** Builder-Agenten entscheiden im Nachmittags-Arbeitszyklus selbstständig, Weizenfelder (`crops`) anzulegen, und kultivieren diese aktiv für 3 Ticks.
+  - **Wildbeeren-Knappheit:** Wildbeeren-Vorkommen im Wald wurden auf 20% Dichte reduziert, um gezielte, organisierte Landwirtschaft in den Mittelpunkt zu rücken.
+- **Biologischer Abfallabbau:** An Felsen entsorgen Agenten Abfälle. Die entstehenden Müllhaufen (`waste_pile`) bauen sich im Laufe der Zeit biologisch ab.
+- **Landschafts- & Geschwindigkeitsregler:** Über Schieberegler auf dem Admin-Dashboard lassen sich Flussbreite, Seen-Häufigkeit, Beeren-Dichte sowie die **Simulationsgeschwindigkeit (Tick Rate)** im laufenden Betrieb fließend anpassen.
+- **Visualisierung im Nachtmodus:** Die gesamte UI sowie der leere äußere Rahmen wurden komplett in ein ansprechendes, dunkles Retro-Theme (`#0f172a`) überführt.
+
+### Unendliche Weltexpansion & Sektorensystem
+- **Grenzlose Entdeckungen:** Sobald sich Agenten oder Spieler den physikalischen Grenzen des aktuellen Sektors nähern, generiert die kontinuierliche Rauschfunktion nahtlos angrenzende Sektoren der Größe **256x256**.
+- **Speicherung und Synchronisation:** Neu entdeckte Sektoren werden persistent für die aktive Spielrunde im Server-Speicher abgelegt und über alle gekoppelten Cluster-Nodes hinweg in Echtzeit synchronisiert.
+- **Explorationsregister (Tribunal):** Agenten kartografieren die Welt, kehren anschließend nach Hause zurück und tragen neu entdeckte Sektoren in das Register des Gerichtshofs (Exekutive) ein, was als Live-Ereignis im Event-Feed gemeldet wird.
 
 ### Agenten-Verhalten und -Intelligenz
 - **Kollisionsregeln:** Agenten können sich ausschließlich auf Grasland (`grass`), Straßen (`road`) und Wald-Tiles (`forest`) bewegen. Wasser (`water`) und Berge/Felsen (`rock`) blockieren die Bewegung.
@@ -32,12 +42,23 @@ Seit Projektbeginn wurden folgende Anforderungen an das System gestellt und impl
   - **Toroidale Geometrie:** Die Wegfindung berücksichtigt den Wrap-Around der Welt an den Rändern (oben/unten, links/rechts) und nutzt eine angepasste toroidale Manhattan-Metrik als Heuristik.
   - **Smart Escape (Befreiungslogik):** Falls ein Agent durch plötzliche Landschafts-Regenerierung komplett eingekesselt ist, weicht er automatisch auf freie, benachbarte Felder aus, um Sackgassen selbstständig aufzulösen.
 
-### Interaktivität & UI
+### Interaktivität, UI & UX-Feinheiten
 - **Echtzeit-WebSockets:** Die Benutzeroberfläche empfängt Tick-Zustands-Broadcasts per bidirektionalem WebSocket-Streaming vom API-Gateway.
-- **Fokusauswahl:** Per Klick auf ein Agenten-Symbol oder in der Statustabelle wird dieser Agent golden fokussiert. Kein Springen/Zoom-Bug beim Auswählen mehr.
-- **Zielvisualisierung:** Das aktive Ziel des ausgewählten Agenten wird auf der Live-Karte mit einem Ziel-Symbol (`🎯`) markiert, um seine Absichten transparent darzustellen.
-- **Live Event Feed:** Die Sidebar zeigt Ereignisse (Treffen, Vereinbarungen, Konsum, Erholung) sofort als Scrolling-Feed an.
-- **Admin Dashboard:** Ein zweiter Tab visualisiert Echtzeit-Ressourcenstatistiken, Kooperationsregeln (Agreements) und die Live-Interessen-Matrix aller Agenten.
+- **Flüssige Agenten-Bewegung (LERP):** Ein LERP-basierter Interpolationsmodus ermöglicht flüssiges Gleiten der Spielfiguren auf dem Canvas. Dies kann über den "Smooth"-Schalter im Overlay ein- und ausgeschaltet werden.
+- **Interaktiver Human Player (HPC):** Spieler können über Tastatur (WASD / Pfeiltasten) eine eigene Human-Figur direkt auf dem Canvas-Grid steuern. Die Navigation wird durch ein schickes Tastaturbadge samt Hover-Anleitungstooltip platzsparend erklärt.
+- **Übersichtliches Kartenbild:** Die Bewegungspfade für Ziel-Kacheln (`showPaths`) sind standardmäßig ausgeblendet (über eine Checkbox reaktivierbar), was ein sauberes Rendering sichert.
+- **Erweitertes Dashboard-Layout:**
+  - **Social Threefolding Tabs:** Die Benutzeroberfläche besitzt drei eigenständige Dashboards: "Rechtssphäre" (Verhandlungsthemen und Gesetzestexte), "Geistesleben" (Agenteninteressen und Bildung) sowie "Wirtschaftsleben" (Ressourcenkreisläufe, Abfallabbau und Wirtschaftsentwicklung).
+  - **Vollständige Tabelle:** Die Agententabelle in der Sidebar listet alle NPC-Vitalwerte komplett und scrollbar auf.
+  - **Event-Feed-Maximierung:** Die Höhe des Event-Feeds wurde verdoppelt (auf 360px), um historische und aktuelle Ereignisse noch komfortabler zu sichten.
+  - **Anpassbarer Startup-Fokus:** Die Karte berechnet ihre Containermaße beim Laden fehlerfrei und zentriert sich automatisch. Das Gitternetz (Grid) ist standardmäßig deaktiviert.
+
+### Dezentrale Spielknoten & Multiplayer (Shared World)
+- **Minikube-Orchestrierung:** Über `make dev-up-two` lässt sich vollautomatisch eine zweite, eigenständige Simulationsinstanz im Namespace `ia3-two` auf Minikube hochfahren.
+- **Konfliktfreies Port-Forwarding:** Port-Forwarding tunnelled Instanz 1 auf `:13000`/`:18080` und Instanz 2 auf `:13001`/`:18081`.
+- **Game-Node-Anzeige im Header:** Ein spezielles Element im Header zeigt die physische Knotentopologie unmissverständlich an (zeigt den eigenen Node-Namen zuerst und führt verbundene Master-Nodes dahinter an, z.B. `ia3, ia3-two`).
+- **Gemeinsame Welt (Shared World Mode):** Ein dezentraler Client-Modus spiegelt den gesamten State des Master-Gateway in Echtzeit im UI wider. 
+- **Sicherheits-Schutz für Sekundärknoten:** Auf unautorisierten Client-Nodes (ia3-two) werden kritische Steuerungselemente (Start, Pause, Regenerate, Szenario-Trigger) ausgeblendet, um Missbrauch zu unterbinden. Nur die master-autorisierte UI (ia3) behält die volle Simulationskontrolle.
 
 ### Entwickler-Tooling
 - **Zuverlässiges Orchestrierungs-Skripting:** Start- und Stop-Skripte verwalten alle lokalen Prozesse sauber und robust.

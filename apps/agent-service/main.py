@@ -12,6 +12,8 @@ from sim.v1 import sim_pb2
 from sim.v1 import sim_pb2_grpc
 
 
+import time
+
 # AI Game Managers state for Social Threefolding (Soziale Dreigliederung)
 class GameManagerState:
     def __init__(self):
@@ -20,6 +22,24 @@ class GameManagerState:
         self.last_econ_tick = 0
         self.proposed_law = ""
         self.active_laws = []
+        self.manager_a_thoughts = []
+        self.manager_b_thoughts = []
+        self.manager_c_thoughts = []
+
+    def add_thought_a(self, text):
+        self.manager_a_thoughts.insert(0, f"[{time.strftime('%H:%M:%S')}] {text}")
+        if len(self.manager_a_thoughts) > 20:
+            self.manager_a_thoughts = self.manager_a_thoughts[:20]
+
+    def add_thought_b(self, text):
+        self.manager_b_thoughts.insert(0, f"[{time.strftime('%H:%M:%S')}] {text}")
+        if len(self.manager_b_thoughts) > 20:
+            self.manager_b_thoughts = self.manager_b_thoughts[:20]
+
+    def add_thought_c(self, text):
+        self.manager_c_thoughts.insert(0, f"[{time.strftime('%H:%M:%S')}] {text}")
+        if len(self.manager_c_thoughts) > 20:
+            self.manager_c_thoughts = self.manager_c_thoughts[:20]
 
 state_tracker = GameManagerState()
 
@@ -422,25 +442,41 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
         injected_events = []
         current_tick = request.tick
 
+        # Fetch rates from request, fallback to defaults if not set
+        relic_spawn_rate = request.relic_spawn_rate if request.relic_spawn_rate > 0 else 80
+        law_propose_rate = request.law_propose_rate if request.law_propose_rate > 0 else 140
+        econ_event_rate = request.econ_event_rate if request.econ_event_rate > 0 else 100
+        artifact_quality = request.artifact_quality if request.artifact_quality > 0 else 100
+        quality_factor = artifact_quality / 100.0
+
         # --- MANAGER A: Geistesleben (Culture & Spirit) ---
-        # Spawns an ancient spiritual relic (every 80 ticks)
-        if current_tick > 0 and (current_tick == 10 or (current_tick - state_tracker.last_relic_tick >= 80)):
+        # Spawns an ancient spiritual relic (every relic_spawn_rate ticks)
+        ticks_relic = current_tick - state_tracker.last_relic_tick
+        state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality modifier: {artifact_quality}%.")
+        
+        if current_tick > 0 and (current_tick == 10 or (ticks_relic >= relic_spawn_rate)):
             state_tracker.last_relic_tick = current_tick
             grass_tiles = [t for t in request.terrain_tiles if t.terrain_type == "grass" and t.object_type == ""]
             if grass_tiles:
                 target_tile = random.choice(grass_tiles)
+                relic_amount = int(100 * quality_factor)
                 map_updates.append(sim_pb2.MapUpdate(
                     x=target_tile.x,
                     y=target_tile.y,
                     terrain_type="grass",
                     object_type="spiritual_symbol",
-                    object_amount=100
+                    object_amount=relic_amount
                 ))
-                injected_events.append(f"✨ KI Geistesleben: An ancient relic of wisdom was revealed at ({target_tile.x}, {target_tile.y})! Deep interest in Arts & Philosophy is spreading. 📖")
+                msg = f"✨ KI Geistesleben: An ancient relic of wisdom was revealed at ({target_tile.x}, {target_tile.y})! Deep interest in Arts & Philosophy is spreading. (Quality: {relic_amount}%) 📖"
+                injected_events.append(msg)
+                state_tracker.add_thought_a(f"Spawning relic of wisdom at ({target_tile.x}, {target_tile.y}) with amount {relic_amount} based on quality {artifact_quality}%.")
 
         # --- MANAGER B: Rechtssphäre (Laws & Rights) ---
-        # Propose a bill periodically (every 140 ticks)
-        if current_tick > 0 and (current_tick - state_tracker.last_law_tick >= 140):
+        # Propose a bill periodically (every law_propose_rate ticks)
+        ticks_law = current_tick - state_tracker.last_law_tick
+        state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
+        
+        if current_tick > 0 and (ticks_law >= law_propose_rate):
             state_tracker.last_law_tick = current_tick
             bills = [
                 "Equitable Resource Sharing Act",
@@ -448,7 +484,9 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
                 "Builder Subsidy Act"
             ]
             state_tracker.proposed_law = random.choice(bills)
-            injected_events.append(f"⚖️ KI Rechtssphäre: Proposed the '{state_tracker.proposed_law}' at the courtroom tribunal! Voting will occur this evening.")
+            msg = f"⚖️ KI Rechtssphäre: Proposed the '{state_tracker.proposed_law}' at the courtroom tribunal! Voting will occur this evening."
+            injected_events.append(msg)
+            state_tracker.add_thought_b(f"Proposed law '{state_tracker.proposed_law}' to balance social spheres of AI agents.")
 
         # Voting resolves during evening hour 23
         hour = current_tick % 24
@@ -470,21 +508,29 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             
             if yes_votes >= no_votes:
                 state_tracker.active_laws.append(state_tracker.proposed_law)
-                injected_events.append(f"⚖️ KI Rechtssphäre: Law PASSED! '{state_tracker.proposed_law}' is now active (Yes: {yes_votes}, No: {no_votes})! 📜")
+                msg = f"⚖️ KI Rechtssphäre: Law PASSED! '{state_tracker.proposed_law}' is now active (Yes: {yes_votes}, No: {no_votes})! 📜"
+                injected_events.append(msg)
+                state_tracker.add_thought_b(f"Tribunal vote resolved for '{state_tracker.proposed_law}': PASSED (Yes: {yes_votes}, No: {no_votes}).")
             else:
-                injected_events.append(f"⚖️ KI Rechtssphäre: Law REJECTED (Yes: {yes_votes}, No: {no_votes}).")
+                msg = f"⚖️ KI Rechtssphäre: Law REJECTED (Yes: {yes_votes}, No: {no_votes})."
+                injected_events.append(msg)
+                state_tracker.add_thought_b(f"Tribunal vote resolved for '{state_tracker.proposed_law}': REJECTED (Yes: {yes_votes}, No: {no_votes}).")
             state_tracker.proposed_law = ""
 
         # --- MANAGER C: Wirtschaftsleben (Economic Life & Physical Challenges) ---
-        # Trigger an economic/disaster event periodically (every 100 ticks)
-        if current_tick > 0 and (current_tick - state_tracker.last_econ_tick >= 100):
+        # Trigger an economic/disaster event periodically (every econ_event_rate ticks)
+        ticks_econ = current_tick - state_tracker.last_econ_tick
+        state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
+        
+        if current_tick > 0 and (ticks_econ >= econ_event_rate):
             state_tracker.last_econ_tick = current_tick
             econ_event = random.choice(["drought", "swarm", "harvest"])
             if econ_event == "drought":
                 injected_events.append("🌾 KI Wirtschaftsleben: Drought! Lake waters are temporarily depleted and crops grow slower. ☀️")
                 water_tiles = [t for t in request.terrain_tiles if t.terrain_type == "water"]
                 if water_tiles:
-                    for tile in random.sample(water_tiles, min(len(water_tiles), 3)):
+                    shrunk_count = max(1, int(3 * quality_factor))
+                    for tile in random.sample(water_tiles, min(len(water_tiles), shrunk_count)):
                         map_updates.append(sim_pb2.MapUpdate(
                             x=tile.x,
                             y=tile.y,
@@ -492,11 +538,13 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
                             object_type="",
                             object_amount=0
                         ))
+                    state_tracker.add_thought_c(f"Triggered Drought: shrunk {shrunk_count} water tiles into grass.")
             elif econ_event == "swarm":
                 injected_events.append("🌾 KI Wirtschaftsleben: Locust Swarm! A cloud of locusts has devoured several farm crop fields! 🦟")
                 crop_tiles = [t for t in request.terrain_tiles if t.terrain_type == "crops"]
                 if crop_tiles:
-                    for tile in random.sample(crop_tiles, min(len(crop_tiles), 3)):
+                    devoured_count = max(1, int(3 * quality_factor))
+                    for tile in random.sample(crop_tiles, min(len(crop_tiles), devoured_count)):
                         map_updates.append(sim_pb2.MapUpdate(
                             x=tile.x,
                             y=tile.y,
@@ -504,17 +552,20 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
                             object_type="",
                             object_amount=0
                         ))
+                    state_tracker.add_thought_c(f"Triggered Locust Swarm: devoured {devoured_count} crop fields.")
             elif econ_event == "harvest":
                 injected_events.append("🌾 KI Wirtschaftsleben: Perfect weather brings a Bumper Harvest! All crop fields are boosted with extra yield. 🌾")
                 crop_tiles = [t for t in request.terrain_tiles if t.terrain_type == "crops"]
+                boost_amount = int(45 * quality_factor)
                 for tile in crop_tiles:
                     map_updates.append(sim_pb2.MapUpdate(
                         x=tile.x,
                         y=tile.y,
                         terrain_type="crops",
                         object_type="crops",
-                        object_amount=min(100, tile.object_amount + 45)
+                        object_amount=min(100, tile.object_amount + boost_amount)
                     ))
+                state_tracker.add_thought_c(f"Triggered Bumper Harvest: boosted crops by +{boost_amount}% yield based on quality factor.")
 
         # 4. Instantiate Mesa simulation model with the received state
         model = MesaSimModel(request)
@@ -575,7 +626,10 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             forest_policy=forest_policy,
             map_updates=map_updates,
             injected_events=injected_events,
-            active_laws=state_tracker.active_laws
+            active_laws=state_tracker.active_laws,
+            manager_a_thoughts=state_tracker.manager_a_thoughts,
+            manager_b_thoughts=state_tracker.manager_b_thoughts,
+            manager_c_thoughts=state_tracker.manager_c_thoughts
         )
 
 

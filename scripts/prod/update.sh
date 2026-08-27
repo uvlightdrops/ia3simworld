@@ -57,6 +57,10 @@ update_service() {
     echo "     - Namespace: ia3-two..."
     minikube kubectl -- rollout restart deployment/"$name" -n ia3-two
   fi
+  if ns_exists "ia3-three"; then
+    echo "     - Namespace: ia3-three..."
+    minikube kubectl -- rollout restart deployment/"$name" -n ia3-three
+  fi
   
   echo "  3. Waiting for rollout to complete..."
   if ns_exists "ia3"; then
@@ -64,6 +68,9 @@ update_service() {
   fi
   if ns_exists "ia3-two"; then
     minikube kubectl -- rollout status deployment/"$name" -n ia3-two --timeout=90s
+  fi
+  if ns_exists "ia3-three"; then
+    minikube kubectl -- rollout status deployment/"$name" -n ia3-three --timeout=90s
   fi
   
   echo "✓ Service '$name' successfully updated and live!"

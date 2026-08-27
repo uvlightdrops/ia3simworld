@@ -4,7 +4,7 @@ HELM_RELEASE ?= ia3-local
 CHART_PATH ?= deploy/helm/ia3-local
 VALUES ?= deploy/helm/ia3-local/values-local.yaml
 
-.PHONY: dev-up dev-down dev-status port-forward port-forward-status logs nuke proto dev-up-two dev-down-two nuke-two dev-start dev-stop dev-diagnose prod-start prod-stop prod-diagnose prod-update prod-update-web prod-update-sim prod-update-gateway prod-update-agent
+.PHONY: dev-up dev-down dev-status port-forward port-forward-status logs nuke proto dev-up-two dev-down-two nuke-two dev-up-three dev-down-three nuke-three dev-start dev-stop dev-diagnose prod-start prod-stop prod-diagnose prod-update prod-update-web prod-update-sim prod-update-gateway prod-update-agent
 
 # Direct Local Development Services (Non-Kubernetes)
 dev-start:
@@ -73,6 +73,15 @@ dev-down-two:
 
 nuke-two:
 	$(MAKE) nuke NAMESPACE=ia3-two HELM_RELEASE=ia3-two
+
+dev-up-three:
+	$(MAKE) dev-up NAMESPACE=ia3-three HELM_RELEASE=ia3-three
+
+dev-down-three:
+	$(MAKE) dev-down NAMESPACE=ia3-three HELM_RELEASE=ia3-three
+
+nuke-three:
+	$(MAKE) nuke NAMESPACE=ia3-three HELM_RELEASE=ia3-three
 
 proto:
 	export PATH=$$HOME/go/bin:$$(go env GOPATH)/bin:$$PATH && \

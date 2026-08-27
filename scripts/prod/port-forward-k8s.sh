@@ -4,6 +4,7 @@
 
 NAMESPACE1="ia3"
 NAMESPACE2="ia3-two"
+NAMESPACE3="ia3-three"
 
 echo "=== Starting IA3 SimWorld Port Forwarders via Minikube ==="
 
@@ -72,6 +73,26 @@ if ns_exists "$NAMESPACE2"; then
   fi
 fi
 
+# Instance 3: ia3-three (18082 and 13002)
+if ns_exists "$NAMESPACE3"; then
+  echo "Checking Instance 3 (Namespace: $NAMESPACE3)..."
+  if is_port_listening 18082; then
+    echo "  - api-gateway (18082) is already active. Skipping."
+  else
+    echo "  - Forwarding api-gateway (18082 -> 8080)..."
+    minikube kubectl -- port-forward -n "$NAMESPACE3" svc/api-gateway 18082:8080 >/dev/null 2>&1 &
+    STARTED_ANY=1
+  fi
+
+  if is_port_listening 13002; then
+    echo "  - web-client (13002) is already active. Skipping."
+  else
+    echo "  - Forwarding web-client (13002 -> 3000)..."
+    minikube kubectl -- port-forward -n "$NAMESPACE3" svc/web-client 13002:3000 >/dev/null 2>&1 &
+    STARTED_ANY=1
+  fi
+fi
+
 if [ $STARTED_ANY -eq 1 ]; then
   sleep 2
   echo ""
@@ -86,6 +107,11 @@ if [ $STARTED_ANY -eq 1 ]; then
     echo "  - Web UI:    http://localhost:13001"
     echo "  - API State: http://localhost:18081/api/state"
   fi
+  if ns_exists "$NAMESPACE3"; then
+    echo "Instance 3 ($NAMESPACE3):"
+    echo "  - Web UI:    http://localhost:13002"
+    echo "  - API State: http://localhost:18082/api/state"
+  fi
   echo ""
   echo "Press Ctrl+C to stop port forwarding."
   wait
@@ -97,6 +123,9 @@ else
   fi
   if ns_exists "$NAMESPACE2"; then
     echo "Instance 2 ($NAMESPACE2): http://localhost:13001"
+  fi
+  if ns_exists "$NAMESPACE3"; then
+    echo "Instance 3 ($NAMESPACE3): http://localhost:13002"
   fi
   echo ""
 fi

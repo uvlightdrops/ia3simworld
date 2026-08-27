@@ -95,23 +95,46 @@ type WorldBounds struct {
 	Height int `json:"height"`
 }
 
+type HumanInteraction struct {
+	NPCID       string   `json:"npcId"`
+	NPCName     string   `json:"npcName"`
+	Text        string   `json:"text"`
+	Options     []string `json:"options"`
+	TicksLeft   int      `json:"ticksLeft"`
+	RequestType string   `json:"requestType"` // "deep_interaction", "socialize", "share_resources"
+}
+
 type WorldState struct {
-	Running           bool            `json:"running"`
-	Tick              uint64          `json:"tick"`
-	TickRateMs        int             `json:"tickRateMs"`
-	TotalAgents       int             `json:"totalAgents"`
-	WorldSize         WorldBounds     `json:"worldSize"`
-	Terrain           [][]string      `json:"terrain"`
-	Objects           [][]WorldObject `json:"objects"`
-	Agents            []Agent         `json:"agents"`
-	Events            []string        `json:"events"`
-	LastUpdated       string          `json:"lastUpdated"`
-	GrassPolicy       string          `json:"grassPolicy"`
-	ForestPolicy      string          `json:"forestPolicy"`
-	ActiveLaws        []string        `json:"activeLaws"`
-	GridOriginX       int             `json:"gridOriginX"`
-	GridOriginY       int             `json:"gridOriginY"`
-	DiscoveredSectors []string        `json:"discoveredSectors"`
+	Running           bool              `json:"running"`
+	Tick              uint64            `json:"tick"`
+	TickRateMs        int               `json:"tickRateMs"`
+	TotalAgents       int               `json:"totalAgents"`
+	WorldSize         WorldBounds       `json:"worldSize"`
+	Terrain           [][]string        `json:"terrain"`
+	Objects           [][]WorldObject   `json:"objects"`
+	Agents            []Agent           `json:"agents"`
+	Events            []string          `json:"events"`
+	LastUpdated       string            `json:"lastUpdated"`
+	GrassPolicy       string            `json:"grassPolicy"`
+	ForestPolicy      string            `json:"forestPolicy"`
+	ActiveLaws        []string          `json:"activeLaws"`
+	GridOriginX       int               `json:"gridOriginX"`
+	GridOriginY       int               `json:"gridOriginY"`
+	DiscoveredSectors []string          `json:"discoveredSectors"`
+	ActiveScenario    string            `json:"activeScenario"`    // "festival" or ""
+	ScenarioState     string            `json:"scenarioState"`     // "gathering", "active", "dispersing", "completed"
+	ScenarioTargetX   int               `json:"scenarioTargetX"`
+	ScenarioTargetY   int               `json:"scenarioTargetY"`
+	ScenarioTicksLeft int               `json:"scenarioTicksLeft"`
+	ActiveInteraction *HumanInteraction `json:"activeInteraction,omitempty"`
+	AutoAnswerMode    string            `json:"autoAnswerMode"` // "manual", "auto_accept", "auto_reject"
+	RelicSpawnRate    int               `json:"relicSpawnRate"`
+	LawProposeRate    int               `json:"lawProposeRate"`
+	EconEventRate     int               `json:"econEventRate"`
+	ArtifactQuality   int               `json:"artifactQuality"`
+	ManagerAThoughts  []string          `json:"managerAThoughts"`
+	ManagerBThoughts  []string          `json:"managerBThoughts"`
+	ManagerCThoughts  []string          `json:"managerCThoughts"`
 }
 
 type Sim struct {
@@ -139,24 +162,60 @@ type Sim struct {
 	maxSectorX     int
 	minSectorY     int
 	maxSectorY     int
+
+	// Scenario State Machine
+	scenarioActive    bool
+	scenarioType      string // "festival"
+	scenarioState     string // "gathering", "active", "dispersing"
+	scenarioTarget    Position
+	scenarioTicksLeft int
+	scenarioStartTick uint64
+
+	// Human Interactive Quests & NPCs Addressing Human
+	activeInteraction      *HumanInteraction
+	autoAnswerMode         string // "manual", "auto_accept", "auto_reject"
+	deepInteractionAllowed map[string]bool
+	interactionMu          sync.Mutex
+
+	// Social Threefolding AI Game Managers Rate Configurations & Reasoning Thoughts
+	relicSpawnRate         int
+	lawProposeRate         int
+	econEventRate          int
+	artifactQuality        int
+	managerAThoughts       []string
+	managerBThoughts       []string
+	managerCThoughts       []string
 }
 
 func NewSim() *Sim {
 	s := &Sim{
-		worldWidth:     96,
-		worldHeight:    96,
-		riverWidth:     4,
-		lakesDensity:   0.20,
-		berriesDensity: 0.20,
-		events:         []string{"[System] Simulation world initialized."},
-		grassPolicy:    "agriculture",
-		forestPolicy:   "berries",
-		activeLaws:     []string{},
-		sectors:        make(map[Position]bool),
-		minSectorX:     0,
-		maxSectorX:     0,
-		minSectorY:     0,
-		maxSectorY:     0,
+		worldWidth:             256,
+		worldHeight:            256,
+		riverWidth:             4,
+		lakesDensity:           0.20,
+		berriesDensity:         0.20,
+		events:                 []string{"[System] Simulation world initialized."},
+		grassPolicy:            "agriculture",
+		forestPolicy:           "berries",
+		activeLaws:             []string{},
+		sectors:                make(map[Position]bool),
+		minSectorX:             0,
+		maxSectorX:             0,
+		minSectorY:             0,
+		maxSectorY:             0,
+		scenarioActive:         false,
+		scenarioType:           "",
+		scenarioState:          "",
+		scenarioTarget:         Position{X: 0, Y: 0},
+		autoAnswerMode:         "manual",
+		deepInteractionAllowed: make(map[string]bool),
+		relicSpawnRate:         80,
+		lawProposeRate:         140,
+		econEventRate:          100,
+		artifactQuality:        100,
+		managerAThoughts:       []string{"[System] Culture KI started."},
+		managerBThoughts:       []string{"[System] Legal KI started."},
+		managerCThoughts:       []string{"[System] Economic KI started."},
 	}
 	s.sectors[Position{X: 0, Y: 0}] = true
 	s.tickRateMs.Store(2000) // Default speed: 2000ms per tick (1 hour game time / 2s real time)
@@ -868,6 +927,262 @@ func main() {
 		_ = json.NewEncoder(w).Encode(humanAgent)
 	})
 
+	http.HandleFunc("/control/agent-request", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			AgentID     string `json:"agentId"`
+			RequestType string `json:"requestType"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Find human player
+		var humanAgent *Agent
+		for i := range s.agents {
+			if s.agents[i].ID == "human-1" {
+				humanAgent = &s.agents[i]
+				break
+			}
+		}
+		if humanAgent == nil {
+			http.Error(w, "You must join as a human player first before making requests!", http.StatusForbidden)
+			return
+		}
+
+		// Find target agent
+		var targetAgent *Agent
+		for i := range s.agents {
+			if s.agents[i].ID == params.AgentID {
+				targetAgent = &s.agents[i]
+				break
+			}
+		}
+		if targetAgent == nil {
+			http.Error(w, "Target agent not found!", http.StatusNotFound)
+			return
+		}
+
+		// Calculate distance between human and target agent
+		dist := s.toroidalDistance(humanAgent.Position, targetAgent.Position)
+		if dist > 25.0 {
+			http.Error(w, fmt.Sprintf("Too far away! You must be within 25 tiles to address %s (distance is %.1f tiles). Move closer!", targetAgent.Name, dist), http.StatusForbidden)
+			return
+		}
+
+		// Process Request Types
+		success := false
+		message := ""
+
+		switch params.RequestType {
+		case "deliver_resources":
+			if targetAgent.Resources < 25 {
+				message = fmt.Sprintf("%s apologizes: 'My resources are too low (%d%%) to share right now!'", targetAgent.Name, targetAgent.Resources)
+			} else {
+				targetAgent.Status = "Delivering Resources to Human 📦"
+				targetAgent.Target = humanAgent.Position
+				targetAgent.addHistory(fmt.Sprintf("Accepted request to deliver resources to human player %s at tick %d", humanAgent.Name, s.tick.Load()))
+				s.addEvent(fmt.Sprintf("📦 %s accepted request: Delivering resources to %s!", targetAgent.Name, humanAgent.Name))
+				success = true
+				message = fmt.Sprintf("%s says: 'Certainly! I am on my way to deliver resources to you.'", targetAgent.Name)
+			}
+		case "explore_together":
+			targetAgent.Status = "Exploring with Human 🧭"
+			targetAgent.Target = humanAgent.Position
+			targetAgent.addHistory(fmt.Sprintf("Accepted request to explore together with human player %s at tick %d", humanAgent.Name, s.tick.Load()))
+			s.addEvent(fmt.Sprintf("🧭 %s accepted request: Travelling with %s!", targetAgent.Name, humanAgent.Name))
+			success = true
+			message = fmt.Sprintf("%s says: 'Excellent idea! Let us explore this infinite world together.'", targetAgent.Name)
+		case "teach_philosophy":
+			// Check if agent has Philosophy interest
+			hasPhilosophy := false
+			philosophyIntensity := 0
+			for _, inter := range targetAgent.Interests {
+				if strings.ToLower(inter.Name) == "philosophy" {
+					hasPhilosophy = true
+					philosophyIntensity = inter.Intensity
+					break
+				}
+			}
+			if !hasPhilosophy || philosophyIntensity < 20 {
+				message = fmt.Sprintf("%s shrugs: 'I do not feel enlightened enough in Philosophy to teach right now.'", targetAgent.Name)
+			} else {
+				// Increase human interests
+				found := false
+				for idx, inter := range humanAgent.Interests {
+					if strings.ToLower(inter.Name) == "philosophy" {
+						humanAgent.Interests[idx].Intensity = clamp(humanAgent.Interests[idx].Intensity + 15, 0, 100)
+						found = true
+						break
+					}
+				}
+				if !found {
+					humanAgent.Interests = append(humanAgent.Interests, Interest{Name: "Philosophy", Intensity: 15})
+				}
+				targetAgent.addHistory(fmt.Sprintf("Taught philosophical wisdom to human player %s at tick %d", humanAgent.Name, s.tick.Load()))
+				s.addEvent(fmt.Sprintf("📖 %s shared philosophical insights with %s!", targetAgent.Name, humanAgent.Name))
+				success = true
+				message = fmt.Sprintf("%s smiles: 'Gladly. Philosophy is the path of threefolding. I have shared my wisdom with you!'", targetAgent.Name)
+			}
+		case "build_crops":
+			if targetAgent.Resources < 30 {
+				message = fmt.Sprintf("%s says: 'I need at least 30%% resources to plant crops (current: %d%%).'", targetAgent.Name, targetAgent.Resources)
+			} else {
+				targetAgent.Status = "Building Crops near Human 🌾"
+				targetAgent.Target = humanAgent.Position
+				targetAgent.addHistory(fmt.Sprintf("Accepted request to plant crops near human player %s at tick %d", humanAgent.Name, s.tick.Load()))
+				s.addEvent(fmt.Sprintf("🌾 %s accepted request: Heading to plant crop fields near %s!", targetAgent.Name, humanAgent.Name))
+				success = true
+				message = fmt.Sprintf("%s says: 'Understood. I will head over and cultivate the land near you.'", targetAgent.Name)
+			}
+		default:
+			http.Error(w, "Unknown request type", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": success,
+			"message": message,
+		})
+	})
+
+	http.HandleFunc("/control/respond-interaction", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			OptionIndex int `json:"optionIndex"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		msg := s.respondInteraction(params.OptionIndex)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": msg,
+		})
+	})
+
+	http.HandleFunc("/control/set-auto-answer", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			Mode string `json:"mode"` // "manual", "auto_accept", "auto_reject"
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if params.Mode != "manual" && params.Mode != "auto_accept" && params.Mode != "auto_reject" {
+			http.Error(w, "Invalid auto answer mode", http.StatusBadRequest)
+			return
+		}
+
+		s.interactionMu.Lock()
+		s.autoAnswerMode = params.Mode
+		s.interactionMu.Unlock()
+
+		s.addEvent(fmt.Sprintf("⚙️ Auto-Antwort-Modus auf '%s' gesetzt.", params.Mode))
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"mode":    params.Mode,
+		})
+	})
+
+	http.HandleFunc("/control/update-manager-settings", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			RelicSpawnRate  int `json:"relicSpawnRate"`
+			LawProposeRate  int `json:"lawProposeRate"`
+			EconEventRate   int `json:"econEventRate"`
+			ArtifactQuality int `json:"artifactQuality"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		s.interactionMu.Lock()
+		if params.RelicSpawnRate > 0 { s.relicSpawnRate = params.RelicSpawnRate }
+		if params.LawProposeRate > 0 { s.lawProposeRate = params.LawProposeRate }
+		if params.EconEventRate > 0 { s.econEventRate = params.EconEventRate }
+		if params.ArtifactQuality > 0 { s.artifactQuality = params.ArtifactQuality }
+		s.interactionMu.Unlock()
+
+		s.addEvent("⚙️ KI Game Manager-Einstellungen aktualisiert.")
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+		})
+	})
+
+	http.HandleFunc("/control/trigger-scenario", func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			Type string `json:"type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if params.Type != "festival" {
+			http.Error(w, "Unknown scenario type. Supported: 'festival'", http.StatusBadRequest)
+			return
+		}
+
+		if s.scenarioActive {
+			http.Error(w, "A scenario is already active!", http.StatusConflict)
+			return
+		}
+
+		// Activate Festival!
+		// Select a festival coordinate far away from homesteads
+		targetX := s.worldWidth/2 - 15
+		targetY := s.worldHeight/2 - 15
+		if targetX < 0 { targetX = 10 }
+		if targetY < 0 { targetY = 10 }
+
+		// Find a valid Grass tile nearby
+		found := false
+		for d := 0; d < 20; d++ {
+			tx := (targetX + d) % s.worldWidth
+			ty := (targetY + d/2) % s.worldHeight
+			if s.terrain[ty][tx] == string(TerrainGrass) && s.objects[ty][tx].Type == "" {
+				targetX = tx
+				targetY = ty
+				found = true
+				break
+			}
+		}
+		if !found {
+			targetX = s.worldWidth / 4
+			targetY = s.worldHeight / 4
+		}
+
+		s.scenarioActive = true
+		s.scenarioType = "festival"
+		s.scenarioState = "gathering"
+		s.scenarioTarget = Position{X: targetX, Y: targetY}
+		s.scenarioStartTick = s.tick.Load()
+		s.scenarioTicksLeft = 0 // Will count 24 ticks once active phase begins
+
+		s.addEvent(fmt.Sprintf("🎉 [Scenario] An Autumn Solstice Festival is announced at (%d, %d)! All agents are packing resources and traveling to gather!", targetX, targetY))
+		
+		for i := range s.agents {
+			a := &s.agents[i]
+			if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+				continue
+			}
+			a.Status = "Traveling to Autumn Solstice Festival 🎉"
+			a.Target = s.scenarioTarget
+			a.addHistory(fmt.Sprintf("Announced Autumn Solstice Festival! Packed supplies and started traveling to coordinates (%d, %d) at tick %d", targetX, targetY, s.tick.Load()))
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.snapshot())
@@ -880,11 +1195,11 @@ func main() {
 		img := image.NewGray(image.Rect(0, 0, 256, 256))
 
 		// We sample our continuous infinite noise function across a 256x256 area.
-		// To match the layout of our main starting sector (0,0) of size 96x96 tiles, 
+		// To match the layout of our main starting sector (0,0) of size 256x256 tiles, 
 		// we scale our coordinate sampling. Each OpenSim meter is scaled slightly so that
 		// the main sector's terrain feature mapping is smoothly represented.
-		// Scale factor maps 256 pixels to 96 tiles: scale = 96.0 / 256.0
-		scale := 96.0 / 256.0
+		// Scale factor maps 256 pixels to 256 tiles: scale = 256.0 / 256.0 = 1.0
+		scale := 256.0 / 256.0
 
 		for y := 0; y < 256; y++ {
 			for x := 0; x < 256; x++ {
@@ -959,8 +1274,8 @@ func main() {
 
 		// Estimate height function for absolute coordinate (used for prim rezzing)
 		getHeight := func(x, y int) float64 {
-			absX := float64(s.minSectorX*96 + x)
-			absY := float64(s.minSectorY*96 + y)
+			absX := float64(s.minSectorX*256 + x)
+			absY := float64(s.minSectorY*256 + y)
 			n1 := s.infiniteNoise2D(absX, absY)
 			n2 := s.infiniteNoise2D(absX*2.5, absY*2.5)
 			h := (n1 * 0.7) + (n2 * 0.3)
@@ -1055,6 +1370,7 @@ func (s *Sim) snapshot() WorldState {
 	s.sectorsMu.RUnlock()
 	sort.Strings(sectorsList)
 
+	s.interactionMu.Lock()
 	state := WorldState{
 		Running:     s.running.Load(),
 		Tick:        s.tick.Load(),
@@ -1072,12 +1388,119 @@ func (s *Sim) snapshot() WorldState {
 		GrassPolicy:       s.grassPolicy,
 		ForestPolicy:      s.forestPolicy,
 		ActiveLaws:        s.activeLaws,
-		GridOriginX:       s.minSectorX * 96,
-		GridOriginY:       s.minSectorY * 96,
+		GridOriginX:       s.minSectorX * 256,
+		GridOriginY:       s.minSectorY * 256,
 		DiscoveredSectors: sectorsList,
+		ActiveScenario:    s.scenarioType,
+		ScenarioState:     s.scenarioState,
+		ScenarioTargetX:   s.scenarioTarget.X,
+		ScenarioTargetY:   s.scenarioTarget.Y,
+		ScenarioTicksLeft: s.scenarioTicksLeft,
+		ActiveInteraction: s.activeInteraction,
+		AutoAnswerMode:    s.autoAnswerMode,
+		RelicSpawnRate:    s.relicSpawnRate,
+		LawProposeRate:    s.lawProposeRate,
+		EconEventRate:     s.econEventRate,
+		ArtifactQuality:   s.artifactQuality,
+		ManagerAThoughts:  s.managerAThoughts,
+		ManagerBThoughts:  s.managerBThoughts,
+		ManagerCThoughts:  s.managerCThoughts,
 	}
+	s.interactionMu.Unlock()
 	copy(state.Agents, s.agents)
 	return state
+}
+
+func (s *Sim) respondInteraction(optionIdx int) string {
+	s.interactionMu.Lock()
+	defer s.interactionMu.Unlock()
+
+	if s.activeInteraction == nil {
+		return "No active interaction to respond to!"
+	}
+
+	npcID := s.activeInteraction.NPCID
+	npcName := s.activeInteraction.NPCName
+	reqType := s.activeInteraction.RequestType
+
+	// Find NPC
+	var npc *Agent
+	for i := range s.agents {
+		if s.agents[i].ID == npcID {
+			npc = &s.agents[i]
+			break
+		}
+	}
+
+	// Find human player
+	var human *Agent
+	for i := range s.agents {
+		if s.agents[i].ID == "human-1" {
+			human = &s.agents[i]
+			break
+		}
+	}
+
+	message := ""
+
+	if optionIdx == 0 { // ACCEPT
+		switch reqType {
+		case "deep_interaction":
+			s.deepInteractionAllowed[npcID] = true
+			message = fmt.Sprintf("Du hast tiefere Interaktion mit %s zugelassen! %s freut sich sehr.", npcName, npcName)
+			s.addEvent(fmt.Sprintf("🤝 %s freut sich: 'Wunderbar! Nun können wir tiefer kooperieren.'", npcName))
+			if npc != nil && human != nil {
+				npc.addHistory(fmt.Sprintf("Established deep interaction agreement with human player %s at tick %d", human.Name, s.tick.Load()))
+			}
+		case "socialize":
+			if npc != nil && human != nil {
+				// Boost Philosophy
+				found := false
+				for idx, inter := range human.Interests {
+					if strings.ToLower(inter.Name) == "philosophy" {
+						human.Interests[idx].Intensity = clamp(human.Interests[idx].Intensity + 10, 0, 100)
+						found = true
+						break
+					}
+				}
+				if !found {
+					human.Interests = append(human.Interests, Interest{Name: "Philosophy", Intensity: 15})
+				}
+				npc.addHistory(fmt.Sprintf("Philosophized with human player %s at tick %d", human.Name, s.tick.Load()))
+				s.addEvent(fmt.Sprintf("📖 %s und %s führten ein anregendes Gespräch über Philosophie!", npcName, human.Name))
+			}
+			message = fmt.Sprintf("Das philosophische Gespräch mit %s hat deinen Geist gestärkt (+10%% Philosophie)!", npcName)
+		case "share_resources":
+			if human != nil && npc != nil {
+				if human.Resources < 15 {
+					message = "Du hattest nicht genügend Rohstoffe! Interaktion abgebrochen."
+				} else {
+					human.Resources = clamp(human.Resources-15, 0, 100)
+					npc.Resources = clamp(npc.Resources+15, 0, 100)
+					npc.addHistory(fmt.Sprintf("Received 15 resources gift from human player %s at tick %d", human.Name, s.tick.Load()))
+					s.addEvent(fmt.Sprintf("🌾 %s schenkte %s 15 Rohstoffe!", human.Name, npcName))
+					message = fmt.Sprintf("Du hast %s 15 Rohstoffe geschenkt.", npcName)
+				}
+			}
+		case "share_energy":
+			if human != nil && npc != nil {
+				human.Energy = clamp(human.Energy+15, 0, 100)
+				npc.Energy = clamp(npc.Energy-10, 0, 100)
+				npc.addHistory(fmt.Sprintf("Gifted 15%% energy to human player %s at tick %d", human.Name, s.tick.Load()))
+				s.addEvent(fmt.Sprintf("✨ %s schenkte %s vitale Lebensenergie!", npcName, human.Name))
+				message = fmt.Sprintf("%s hat dir 15%% Lebensenergie geschenkt!", npcName)
+			}
+		}
+	} else { // REJECT
+		message = fmt.Sprintf("Du hast die Anfrage von %s abgelehnt.", npcName)
+		s.addEvent(fmt.Sprintf("🚶 %s akzeptierte die Ablehnung höflich.", npcName))
+		if npc != nil && human != nil {
+			npc.addHistory(fmt.Sprintf("Human player %s declined the interaction request at tick %d", human.Name, s.tick.Load()))
+		}
+	}
+
+	s.activeInteraction = nil
+	return message
 }
 
 func (s *Sim) loop() {
@@ -1151,6 +1574,29 @@ func (s *Sim) findNearestResource(start Position, resTypes []Terrain) Position {
 
 func (s *Sim) advanceAgents(currentTick uint64) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(currentTick)))
+
+	// Process human interaction countdown decay and auto-answers
+	s.interactionMu.Lock()
+	if s.activeInteraction != nil {
+		s.activeInteraction.TicksLeft--
+		if s.activeInteraction.TicksLeft <= 0 {
+			if s.autoAnswerMode == "auto_accept" {
+				// Auto-accept (index 0)
+				s.interactionMu.Unlock()
+				s.respondInteraction(0)
+				s.interactionMu.Lock()
+			} else if s.autoAnswerMode == "auto_reject" {
+				// Auto-reject (index 1)
+				s.interactionMu.Unlock()
+				s.respondInteraction(1)
+				s.interactionMu.Lock()
+			} else {
+				s.addEvent(fmt.Sprintf("⏳ [Quest] Anfrage von %s ist abgelaufen.", s.activeInteraction.NPCName))
+				s.activeInteraction = nil
+			}
+		}
+	}
+	s.interactionMu.Unlock()
 
 	// 1. Decay energy, resources, accumulate waste, and process interest decay/reinforcement
 	for i := range s.agents {
@@ -1337,6 +1783,108 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 	// 3. Call Python Mesa AgentBehaviorService over gRPC!
 	s.queryMesaAgentBehavior()
 
+	// Update Scenario State Machine (only once per tick)
+	if s.scenarioActive {
+		if s.scenarioState == "gathering" {
+			// Check how many AI agents have arrived near the festival center
+			arrivedCount := 0
+			aiCount := 0
+			for idx := range s.agents {
+				a := &s.agents[idx]
+				if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+					continue
+				}
+				aiCount++
+				if s.toroidalDistance(a.Position, s.scenarioTarget) <= 3.0 {
+					arrivedCount++
+				}
+			}
+
+			// Transition to active if at least 6 agents arrived, or after 25 ticks gather timeout
+			ticksGathered := currentTick - s.scenarioStartTick
+			if arrivedCount >= 6 || arrivedCount >= aiCount || ticksGathered >= 25 {
+				s.scenarioState = "active"
+				s.scenarioTicksLeft = 24
+				s.addEvent("🎉 [Scenario] All agents have arrived! The Autumn Solstice Festival has officially BEGUN! 🎶 Let the celebrations begin!")
+				for idx := range s.agents {
+					a := &s.agents[idx]
+					if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+						continue
+					}
+					a.Status = "Celebrating Autumn Solstice Festival 🎶"
+					a.Mood = "joyful"
+					a.addHistory(fmt.Sprintf("Met with the tribe at the festival grounds. Celebrations are officially active! 🎶 at tick %d", currentTick))
+				}
+			}
+		} else if s.scenarioState == "active" {
+			s.scenarioTicksLeft--
+
+			// Broadcast random festival occurrences to event feed (15% chance per tick)
+			if rng.Float64() < 0.15 {
+				festLogs := []string{
+					"Bonfire sparks fly into the night sky as agents share ancient folk stories! 🔥🌌",
+					"Aster and Sora lead a wild circle dance around the Solstice fire! 💃🕺",
+					"Nyx shares delicious roasted wildberries and freshly baked bread with everyone! 🍓🍞",
+					"Pico and Juno are debating cosmic philosophy and quantum mechanics under the stars! 🌌🧬",
+					"Rook is playing a lively acoustic flute melody, accompanied by Pico on drums! 🎶🥁",
+					"Vale is reciting beautiful verses of Autumn Solstice poetry to a captive audience! 📖🍂",
+					"Juno and Iris are crafting colorful flower crowns and decorating the festival grounds! 🌸🍂",
+				}
+				logMsg := festLogs[rng.Intn(len(festLogs))]
+				s.addEvent("🎉 [Festival] " + logMsg)
+			}
+
+			if s.scenarioTicksLeft <= 0 {
+				s.scenarioState = "dispersing"
+				s.scenarioStartTick = currentTick // Track dispersion time
+				s.addEvent("🌅 [Scenario] The Autumn Solstice Festival ends as dawn breaks. Agents are packing up leftover supplies and heading back to their homesteads.")
+				for idx := range s.agents {
+					a := &s.agents[idx]
+					if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+						continue
+					}
+					a.Status = "Heading back home from Festival 🚶"
+					a.Target = a.HomePosition
+					a.addHistory(fmt.Sprintf("Festival concluded. Packed supplies and started journey back home at tick %d", currentTick))
+				}
+			}
+		} else if s.scenarioState == "dispersing" {
+			// Check if all agents have arrived near their HomePosition
+			allHome := true
+			ticksDispersing := currentTick - s.scenarioStartTick
+			for idx := range s.agents {
+				a := &s.agents[idx]
+				if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+					continue
+				}
+				if s.toroidalDistance(a.Position, a.HomePosition) > 2.0 {
+					allHome = false
+					break
+				}
+			}
+
+			// Transition to completed if everyone is home or after 25 ticks timeout
+			if allHome || ticksDispersing >= 25 {
+				s.scenarioActive = false
+				s.scenarioType = ""
+				s.scenarioState = ""
+
+				report := fmt.Sprintf("📜 [Civilization Chronicle] The Autumn Solstice Festival has concluded successfully. Over 24 hours, the founders gathered at (%d, %d), pooled supply resources, and cultivated their social, artistic, and philosophical bonds. Stronger harmony has been established. This historic milestone is now recorded in the chronicles of SimWorld.", s.scenarioTarget.X, s.scenarioTarget.Y)
+				s.addEvent(report)
+
+				for idx := range s.agents {
+					a := &s.agents[idx]
+					if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+						continue
+					}
+					a.Status = "patrolling"
+					a.Target = a.HomePosition
+					a.addHistory(fmt.Sprintf("Chronicle: Autumn Solstice Festival report filed in historical archive at tick %d", currentTick))
+				}
+			}
+		}
+	}
+
 	// 4. Movement and objective execution
 	for i := range s.agents {
 		agent := &s.agents[i]
@@ -1414,7 +1962,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 				}
 			}
 		}
-		if agent.Energy < 25 && isNextToHome {
+		if agent.Energy < 25 && isNextToHome && !s.scenarioActive {
 			agent.Energy = 100
 			agent.Status = "sleeping at homestead"
 			agent.Mood = "satisfied"
@@ -1512,15 +2060,238 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			}
 		}
 
-		// Calculate path step towards target decided by Python Mesa
-		nextStep := s.findNextStep(agent.Position, agent.Target)
-		agent.Position = nextStep
+		// Scenario overrides
+		if s.scenarioActive && !strings.HasPrefix(agent.ID, "human-") && agent.Role != "Human Explorer" {
+			if s.scenarioState == "gathering" {
+				dist := s.toroidalDistance(agent.Position, s.scenarioTarget)
+				if dist <= 3.0 {
+					// Arrived: wander near festival center
+					agent.Target = Position{
+						X: wrap(s.scenarioTarget.X + rng.Intn(3)-1, s.worldWidth),
+						Y: wrap(s.scenarioTarget.Y + rng.Intn(3)-1, s.worldHeight),
+					}
+					agent.Status = "Preparing Festival Grounds 🎪"
+				} else {
+					agent.Target = s.scenarioTarget
+					agent.Status = "Traveling to Solstice Festival 🎉"
+				}
+			} else if s.scenarioState == "active" {
+				// Wander near center
+				agent.Target = Position{
+					X: wrap(s.scenarioTarget.X + rng.Intn(5)-2, s.worldWidth),
+					Y: wrap(s.scenarioTarget.Y + rng.Intn(5)-2, s.worldHeight),
+				}
+				agent.Status = "Celebrating Solstice Festival 🎶"
+				agent.Mood = "joyful"
+				
+				// Feasting benefits!
+				agent.Energy = clamp(agent.Energy + 5, 0, 100)
+				agent.Resources = clamp(agent.Resources + 5, 0, 100)
 
-		// 1. Invisible infinite map expansion on agent/player movement
-		s.checkExpansion(agent.Position)
+				// Cultivate philosophy, socializing, art
+				for _, name := range []string{"Philosophy", "socializing", "art"} {
+					found := false
+					for idx := range agent.Interests {
+						if agent.Interests[idx].Name == name {
+							agent.Interests[idx].Intensity = clamp(agent.Interests[idx].Intensity + 3, 0, 100)
+							found = true
+							break
+						}
+					}
+					if !found {
+						agent.Interests = append(agent.Interests, Interest{Name: name, Intensity: 15})
+					}
+				}
+			} else if s.scenarioState == "dispersing" {
+				agent.Target = agent.HomePosition
+				agent.Status = "Heading back home from Festival 🚶"
+			}
+		}
+
+		// Process custom human request actions
+		if agent.Status == "Delivering Resources to Human 📦" {
+			// Find human position
+			var humanPos *Position
+			for idx := range s.agents {
+				if s.agents[idx].ID == "human-1" {
+					humanPos = &s.agents[idx].Position
+					break
+				}
+			}
+			if humanPos != nil {
+				agent.Target = *humanPos
+				dist := s.toroidalDistance(agent.Position, agent.Target)
+				if dist <= 1.5 {
+					// Delivered!
+					agent.Resources = clamp(agent.Resources-20, 0, 100)
+					for idx := range s.agents {
+						if s.agents[idx].ID == "human-1" {
+							s.agents[idx].Resources = clamp(s.agents[idx].Resources+20, 0, 100)
+							s.agents[idx].addHistory(fmt.Sprintf("Received 20 resources delivered by %s! 📦", agent.Name))
+							break
+						}
+					}
+					agent.addHistory(fmt.Sprintf("Successfully delivered 20 resources to human player at tick %d 📦", currentTick))
+					s.addEvent(fmt.Sprintf("📦 %s successfully delivered 20 resources to human player!", agent.Name))
+					agent.Target = agent.HomePosition
+					agent.Status = "Traveling"
+				}
+			} else {
+				agent.Status = "Traveling"
+				agent.Target = agent.HomePosition
+			}
+		} else if agent.Status == "Exploring with Human 🧭" {
+			// Target the human player
+			var humanPos *Position
+			for idx := range s.agents {
+				if s.agents[idx].ID == "human-1" {
+					humanPos = &s.agents[idx].Position
+					break
+				}
+			}
+			if humanPos != nil {
+				agent.Target = *humanPos
+				dist := s.toroidalDistance(agent.Position, agent.Target)
+				if dist <= 2.0 && rng.Float64() < 0.10 {
+					agent.addHistory(fmt.Sprintf("Shared thoughts with human player while walking at tick %d 🧭", currentTick))
+					s.addEvent(fmt.Sprintf("🧭 %s is sharing stories with the human player as they walk together.", agent.Name))
+				}
+			} else {
+				agent.Status = "Traveling"
+				agent.Target = agent.HomePosition
+			}
+		} else if agent.Status == "Building Crops near Human 🌾" {
+			// Find human position
+			var humanPos *Position
+			for idx := range s.agents {
+				if s.agents[idx].ID == "human-1" {
+					humanPos = &s.agents[idx].Position
+					break
+				}
+			}
+			if humanPos != nil {
+				agent.Target = *humanPos
+				dist := s.toroidalDistance(agent.Position, agent.Target)
+				if dist <= 1.5 {
+					// Plant crop field
+					planted := false
+					for dy := -1; dy <= 1; dy++ {
+						for dx := -1; dx <= 1; dx++ {
+							px := wrap(agent.Position.X+dx, s.worldWidth)
+							py := wrap(agent.Position.Y+dy, s.worldHeight)
+							if s.terrain[py][px] == string(TerrainGrass) && s.objects[py][px].Type == "" {
+								s.objects[py][px] = WorldObject{Type: "crops", Amount: 20, MaxAmount: 100}
+								planted = true
+								break
+							}
+						}
+						if planted { break }
+					}
+					if planted {
+						agent.Resources = clamp(agent.Resources-20, 0, 100)
+						agent.addHistory(fmt.Sprintf("Planted crop field near human player at tick %d 🌾", currentTick))
+						s.addEvent(fmt.Sprintf("🌾 %s planted a crop field near the human player!", agent.Name))
+					} else {
+						agent.addHistory(fmt.Sprintf("Could not find suitable open grass tile to plant crops near human player at tick %d", currentTick))
+					}
+					agent.Target = agent.HomePosition
+					agent.Status = "Traveling"
+				}
+			} else {
+				agent.Status = "Traveling"
+				agent.Target = agent.HomePosition
+			}
+		}
+
+		// Determine speed based on energy
+		// - Energy >= 75: Speed = 3 tiles/tick
+		// - 25 <= Energy < 75: Speed = 2 tiles/tick
+		// - Energy < 25: Speed = 1 tile/tick
+		speed := 1
+		if agent.Energy >= 75 {
+			speed = 3
+		} else if agent.Energy >= 25 {
+			speed = 2
+		}
+
+		// Move up to 'speed' steps
+		for step := 0; step < speed; step++ {
+			if agent.Position.X == agent.Target.X && agent.Position.Y == agent.Target.Y {
+				break
+			}
+			nextStep := s.findNextStep(agent.Position, agent.Target)
+			if nextStep.X == agent.Position.X && nextStep.Y == agent.Position.Y {
+				break
+			}
+			agent.Position = nextStep
+			s.checkExpansion(agent.Position)
+		}
+
+		// Trigger random interactive request to human player
+		if s.activeInteraction == nil && !strings.HasPrefix(agent.ID, "human-") && agent.Role != "Human Explorer" {
+			// Find human player
+			var humanAgent *Agent
+			for idx := range s.agents {
+				if s.agents[idx].ID == "human-1" {
+					humanAgent = &s.agents[idx]
+					break
+				}
+			}
+			if humanAgent != nil {
+				dist := s.toroidalDistance(agent.Position, humanAgent.Position)
+				if dist <= 12.0 && rng.Float64() < 0.05 {
+					s.interactionMu.Lock()
+					if s.activeInteraction == nil {
+						if !s.deepInteractionAllowed[agent.ID] {
+							s.activeInteraction = &HumanInteraction{
+								NPCID:       agent.ID,
+								NPCName:     agent.Name,
+								Text:        fmt.Sprintf("Hallo %s! Tiefere Interaktion okay? Ich würde mich gerne intensiver mit dir austauschen!", humanAgent.Name),
+								Options:     []string{"Ja (Gerne!)", "Nein (Keine Zeit)"},
+								TicksLeft:   12,
+								RequestType: "deep_interaction",
+							}
+						} else {
+							// Choose random quest request
+							rVal := rng.Intn(3)
+							if rVal == 0 {
+								s.activeInteraction = &HumanInteraction{
+									NPCID:       agent.ID,
+									NPCName:     agent.Name,
+									Text:        "Hast du Lust auf ein kurzes Gespräch über Philosophie? Es stärkt unseren Geist!",
+									Options:     []string{"Ja, lass uns philosophieren", "Nein, danke"},
+									TicksLeft:   12,
+									RequestType: "socialize",
+								}
+							} else if rVal == 1 {
+								s.activeInteraction = &HumanInteraction{
+									NPCID:       agent.ID,
+									NPCName:     agent.Name,
+									Text:        "Könntest du mir 15 Rohstoffe schenken? Ich benötige sie dringend für meine Siedlungsarbeit!",
+									Options:     []string{"Ja, nimm meine Rohstoffe (-15)", "Nein, ich brauche sie selbst"},
+									TicksLeft:   12,
+									RequestType: "share_resources",
+								}
+							} else {
+								s.activeInteraction = &HumanInteraction{
+									NPCID:       agent.ID,
+									NPCName:     agent.Name,
+									Text:        fmt.Sprintf("Du siehst erschöpft aus, %s. Soll ich dir etwas von meiner Lebensenergie schenken (+15%% Energie)?", humanAgent.Name),
+									Options:     []string{"Ja, danke (+15% Energie)", "Nein, danke"},
+									TicksLeft:   12,
+									RequestType: "share_energy",
+								}
+							}
+						}
+						s.addEvent(fmt.Sprintf("💬 %s spricht dich an: '%s'", agent.Name, s.activeInteraction.Text))
+					}
+					s.interactionMu.Unlock()
+				}
+			}
+		}
 
 		// 2. Settlement radius restriction and dynamic exploration logic (only for AI agents)
-		if !strings.HasPrefix(agent.ID, "human-") && agent.Role != "Human Explorer" {
+		if !strings.HasPrefix(agent.ID, "human-") && agent.Role != "Human Explorer" && !s.scenarioActive {
 			// Compute distance to home position
 			distToHome := math.Abs(float64(agent.Position.X-agent.HomePosition.X)) + math.Abs(float64(agent.Position.Y-agent.HomePosition.Y))
 			
@@ -1550,10 +2321,10 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 
 			// While in exploration mode, track active sectors traversed
 			if agent.Status == "Exploring" {
-				absX := s.minSectorX*96 + agent.Position.X
-				absY := s.minSectorY*96 + agent.Position.Y
-				secX := int(math.Floor(float64(absX) / 96.0))
-				secY := int(math.Floor(float64(absY) / 96.0))
+				absX := s.minSectorX*256 + agent.Position.X
+				absY := s.minSectorY*256 + agent.Position.Y
+				secX := int(math.Floor(float64(absX) / 256.0))
+				secY := int(math.Floor(float64(absY) / 256.0))
 				secStr := fmt.Sprintf("(%d, %d)", secX, secY)
 				
 				// Add to traversed list
@@ -1628,8 +2399,11 @@ func (s *Sim) queryMesaAgentBehavior() {
 
 	client := pb.NewAgentDecisionServiceClient(conn)
 
-	pbAgents := make([]*pb.AgentState, len(s.agents))
-	for i, a := range s.agents {
+	var pbAgents []*pb.AgentState
+	for _, a := range s.agents {
+		if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+			continue
+		}
 		pbInterests := make([]*pb.Interest, len(a.Interests))
 		for j, interest := range a.Interests {
 			pbInterests[j] = &pb.Interest{
@@ -1649,7 +2423,7 @@ func (s *Sim) queryMesaAgentBehavior() {
 			}
 		}
 
-		pbAgents[i] = &pb.AgentState{
+		pbAgents = append(pbAgents, &pb.AgentState{
 			Id:        a.ID,
 			Name:      a.Name,
 			Role:      a.Role,
@@ -1662,7 +2436,7 @@ func (s *Sim) queryMesaAgentBehavior() {
 			Agreement: pbAgreement,
 			Resources: int32(a.Resources),
 			Waste:     int32(a.Waste),
-		}
+		})
 	}
 
 	var pbTiles []*pb.TerrainTile
@@ -1683,13 +2457,17 @@ func (s *Sim) queryMesaAgentBehavior() {
 	}
 
 	req := &pb.DecideActionsRequest{
-		Tick:         s.tick.Load(),
-		WorldWidth:   int32(s.worldWidth),
-		WorldHeight:  int32(s.worldHeight),
-		Agents:       pbAgents,
-		TerrainTiles: pbTiles,
-		GrassPolicy:  s.grassPolicy,
-		ForestPolicy: s.forestPolicy,
+		Tick:            s.tick.Load(),
+		WorldWidth:      int32(s.worldWidth),
+		WorldHeight:     int32(s.worldHeight),
+		Agents:          pbAgents,
+		TerrainTiles:    pbTiles,
+		GrassPolicy:     s.grassPolicy,
+		ForestPolicy:    s.forestPolicy,
+		RelicSpawnRate:  int32(s.relicSpawnRate),
+		LawProposeRate:  int32(s.lawProposeRate),
+		EconEventRate:   int32(s.econEventRate),
+		ArtifactQuality: int32(s.artifactQuality),
 	}
 
 	resp, err := client.DecideActions(ctx, req)
@@ -1697,6 +2475,19 @@ func (s *Sim) queryMesaAgentBehavior() {
 		log.Printf("Warning: DecideActions gRPC call failed: %v", err)
 		return
 	}
+
+	// Capture AI Game Managers' thoughts
+	s.interactionMu.Lock()
+	if len(resp.ManagerAThoughts) > 0 {
+		s.managerAThoughts = resp.ManagerAThoughts
+	}
+	if len(resp.ManagerBThoughts) > 0 {
+		s.managerBThoughts = resp.ManagerBThoughts
+	}
+	if len(resp.ManagerCThoughts) > 0 {
+		s.managerCThoughts = resp.ManagerCThoughts
+	}
+	s.interactionMu.Unlock()
 
 	// Process newly negotiated court policies
 	if resp.GrassPolicy != "" && resp.GrassPolicy != s.grassPolicy {
@@ -1748,12 +2539,20 @@ func (s *Sim) queryMesaAgentBehavior() {
 	for _, dec := range resp.Decisions {
 		for i := range s.agents {
 			if s.agents[i].ID == dec.AgentId {
-				s.agents[i].Target = Position{X: int(dec.Target.X), Y: int(dec.Target.Y)}
-				if s.agents[i].Status != dec.Status {
-					s.agents[i].addHistory(fmt.Sprintf("Changed action to '%s' at tick %d", dec.Status, s.tick.Load()))
+				// Don't override status and targets if the agent is currently fulfilling an active human request!
+				isHumanRequest := strings.Contains(s.agents[i].Status, "Human") ||
+					strings.Contains(s.agents[i].Status, "📦") ||
+					strings.Contains(s.agents[i].Status, "🧭") ||
+					strings.Contains(s.agents[i].Status, "🌾")
+
+				if !isHumanRequest {
+					s.agents[i].Target = Position{X: int(dec.Target.X), Y: int(dec.Target.Y)}
+					if s.agents[i].Status != dec.Status {
+						s.agents[i].addHistory(fmt.Sprintf("Changed action to '%s' at tick %d", dec.Status, s.tick.Load()))
+					}
+					s.agents[i].Status = dec.Status
+					s.agents[i].Mood = dec.Mood
 				}
-				s.agents[i].Status = dec.Status
-				s.agents[i].Mood = dec.Mood
 				s.agents[i].Energy = int(dec.Energy)
 				s.agents[i].Resources = int(dec.Resources)
 				s.agents[i].Waste = int(dec.Waste)
@@ -1987,8 +2786,8 @@ func (s *Sim) ensureSector(secX, secY int) {
 	s.minSectorX, s.maxSectorX = minX, maxX
 	s.minSectorY, s.maxSectorY = minY, maxY
 
-	newW := (maxX - minX + 1) * 96
-	newH := (maxY - minY + 1) * 96
+	newW := (maxX - minX + 1) * 256
+	newH := (maxY - minY + 1) * 256
 
 	// Allocate new arrays
 	newTerrain := make([][]string, newH)
@@ -1999,8 +2798,8 @@ func (s *Sim) ensureSector(secX, secY int) {
 	}
 
 	// Calculate copy offsets
-	dx := (oldMinX - minX) * 96
-	dy := (oldMinY - minY) * 96
+	dx := (oldMinX - minX) * 256
+	dy := (oldMinY - minY) * 256
 
 	// Copy old terrain and objects
 	for y := 0; y < s.worldHeight; y++ {
@@ -2034,13 +2833,13 @@ func (s *Sim) ensureSector(secX, secY int) {
 
 func (s *Sim) generateSectorTerrain(secX, secY int) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(secX*1000+secY)))
-	for ly := 0; ly < 96; ly++ {
-		for lx := 0; lx < 96; lx++ {
-			absX := secX*96 + lx
-			absY := secY*96 + ly
+	for ly := 0; ly < 256; ly++ {
+		for lx := 0; lx < 256; lx++ {
+			absX := secX*256 + lx
+			absY := secY*256 + ly
 
-			gx := absX - s.minSectorX*96
-			gy := absY - s.minSectorY*96
+			gx := absX - s.minSectorX*256
+			gy := absY - s.minSectorY*256
 
 			if s.terrain[gy][gx] != "" {
 				continue // already populated
@@ -2071,12 +2870,12 @@ func (s *Sim) generateSectorTerrain(secX, secY int) {
 
 func (s *Sim) checkExpansion(pos Position) {
 	// Find current sector coord of the position
-	absX := s.minSectorX*96 + pos.X
-	absY := s.minSectorY*96 + pos.Y
+	absX := s.minSectorX*256 + pos.X
+	absY := s.minSectorY*256 + pos.Y
 
 	// Calculate which sector this absolute position lies in
-	secX := int(math.Floor(float64(absX) / 96.0))
-	secY := int(math.Floor(float64(absY) / 96.0))
+	secX := int(math.Floor(float64(absX) / 256.0))
+	secY := int(math.Floor(float64(absY) / 256.0))
 
 	// If they are near the boundary of the stitched grid, generate adjacent sectors!
 	if pos.X < 8 {

@@ -52,6 +52,10 @@ message DecideActionsRequest {
   repeated TerrainTile terrain_tiles = 5;
   string grass_policy = 6;
   string forest_policy = 7;
+  int32 relic_spawn_rate = 8;
+  int32 law_propose_rate = 9;
+  int32 econ_event_rate = 10;
+  int32 artifact_quality = 11; // 50-150% quality modifier
 }
 
 message AgentDecision {
@@ -80,6 +84,9 @@ message DecideActionsResponse {
   repeated MapUpdate map_updates = 4;
   repeated string injected_events = 5;
   repeated string active_laws = 6;
+  repeated string manager_a_thoughts = 7;
+  repeated string manager_b_thoughts = 8;
+  repeated string manager_c_thoughts = 9;
 }
 
 service AgentDecisionService {
