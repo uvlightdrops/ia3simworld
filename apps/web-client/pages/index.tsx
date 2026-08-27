@@ -47,6 +47,8 @@ type WorldState = {
   agents: Agent[];
   events: string[];
   lastUpdated: string;
+  grassPolicy?: string;
+  forestPolicy?: string;
 };
 
 const initialState: WorldState = {
@@ -60,6 +62,8 @@ const initialState: WorldState = {
   agents: [],
   events: [],
   lastUpdated: "",
+  grassPolicy: "agriculture",
+  forestPolicy: "berries",
 };
 
 const terrainColors: Record<string, string> = {
@@ -1176,6 +1180,28 @@ export default function Home() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            {/* Territorial Laws & Policies Panel */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>⚖️ Tribunal Territory Laws</span>
+                <span style={{ fontSize: 10, background: "#334155", padding: "2px 6px", borderRadius: 10, color: "#94a3b8" }}>Weekly Negotiation</span>
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "6px 10px", borderRadius: 6 }}>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Grassland Usage:</span>
+                  <span style={{ fontSize: 12, fontWeight: "bold", color: state.grassPolicy === "protected" ? "#ef4444" : "#10b981" }}>
+                    {state.grassPolicy === "protected" ? "🚫🌾 Protected" : "🌾 Agriculture"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "6px 10px", borderRadius: 6 }}>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Forest Usage:</span>
+                  <span style={{ fontSize: 12, fontWeight: "bold", color: state.forestPolicy === "timber" ? "#f59e0b" : "#10b981" }}>
+                    {state.forestPolicy === "timber" ? "🪓 Timber logging" : "🍓 Berries harvest"}
+                  </span>
+                </div>
               </div>
             </div>
 

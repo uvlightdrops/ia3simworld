@@ -50,6 +50,8 @@ message DecideActionsRequest {
   int32 world_height = 3;
   repeated AgentState agents = 4;
   repeated TerrainTile terrain_tiles = 5;
+  string grass_policy = 6;
+  string forest_policy = 7;
 }
 
 message AgentDecision {
@@ -65,6 +67,8 @@ message AgentDecision {
 
 message DecideActionsResponse {
   repeated AgentDecision decisions = 1;
+  string grass_policy = 2;
+  string forest_policy = 3;
 }
 
 service AgentDecisionService {

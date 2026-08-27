@@ -77,16 +77,18 @@ type WorldBounds struct {
 }
 
 type WorldState struct {
-	Running     bool            `json:"running"`
-	Tick        uint64          `json:"tick"`
-	TickRateMs  int             `json:"tickRateMs"`
-	TotalAgents int             `json:"totalAgents"`
-	WorldSize   WorldBounds     `json:"worldSize"`
-	Terrain     [][]string      `json:"terrain"`
-	Objects     [][]WorldObject `json:"objects"`
-	Agents      []Agent         `json:"agents"`
-	Events      []string        `json:"events"`
-	LastUpdated string          `json:"lastUpdated"`
+	Running      bool            `json:"running"`
+	Tick         uint64          `json:"tick"`
+	TickRateMs   int             `json:"tickRateMs"`
+	TotalAgents  int             `json:"totalAgents"`
+	WorldSize    WorldBounds     `json:"worldSize"`
+	Terrain      [][]string      `json:"terrain"`
+	Objects      [][]WorldObject `json:"objects"`
+	Agents       []Agent         `json:"agents"`
+	Events       []string        `json:"events"`
+	LastUpdated  string          `json:"lastUpdated"`
+	GrassPolicy  string          `json:"grassPolicy"`
+	ForestPolicy string          `json:"forestPolicy"`
 }
 
 type Sim struct {
@@ -102,6 +104,8 @@ type Sim struct {
 	agents         []Agent
 	events         []string
 	eventsMu       sync.Mutex
+	grassPolicy    string
+	forestPolicy   string
 }
 
 func NewSim() *Sim {
@@ -112,6 +116,8 @@ func NewSim() *Sim {
 		lakesDensity:   0.20,
 		berriesDensity: 0.20,
 		events:         []string{"[System] Simulation world initialized."},
+		grassPolicy:    "agriculture",
+		forestPolicy:   "berries",
 	}
 	s.generateTerrain()
 	s.seedAgents()
@@ -345,8 +351,8 @@ func (s *Sim) generateTerrain() {
 			}
 		}
 
-		// Place 4 crop tiles at specific offsets around the 2x2 homestead
-		cropOffsets := [][2]int{{-1, -1}, {2, -1}, {-1, 2}, {2, 2}}
+		// Place 1 crop tile at specific offset around the 2x2 homestead instead of 4 (to force dynamic agriculture)
+		cropOffsets := [][2]int{{-1, -1}}
 		for _, offset := range cropOffsets {
 			ny := wrap(cy+offset[1], s.worldHeight)
 			nx := wrap(cx+offset[0], s.worldWidth)
@@ -364,8 +370,8 @@ func (s *Sim) generateTerrain() {
 	courtX := s.worldWidth/2 - 2
 	foundCourt := false
 
-	for y := 0; y < s.worldHeight; y++ {
-		for x := 0; x < s.worldWidth; x++ {
+	for y := 15; y < s.worldHeight-15; y++ {
+		for x := 15; x < s.worldWidth-15; x++ {
 			pos := Position{X: x, Y: y}
 			
 			// Check distance to all settlement centers
@@ -424,8 +430,8 @@ func (s *Sim) generateTerrain() {
 	marketX := s.worldWidth/2 + 2
 	foundMarket := false
 
-	for y := 0; y < s.worldHeight; y++ {
-		for x := 0; x < s.worldWidth; x++ {
+	for y := 15; y < s.worldHeight-15; y++ {
+		for x := 15; x < s.worldWidth-15; x++ {
 			pos := Position{X: x, Y: y}
 			
 			// Check distance to all settlement centers
@@ -723,11 +729,13 @@ func (s *Sim) snapshot() WorldState {
 			Width:  s.worldWidth,
 			Height: s.worldHeight,
 		},
-		Terrain:     terrain,
-		Objects:     objects,
-		Agents:      make([]Agent, len(s.agents)),
-		Events:      copiedEvents,
-		LastUpdated: time.Now().UTC().Format(time.RFC3339),
+		Terrain:      terrain,
+		Objects:      objects,
+		Agents:       make([]Agent, len(s.agents)),
+		Events:       copiedEvents,
+		LastUpdated:  time.Now().UTC().Format(time.RFC3339),
+		GrassPolicy:  s.grassPolicy,
+		ForestPolicy: s.forestPolicy,
 	}
 	copy(state.Agents, s.agents)
 	return state
@@ -1003,6 +1011,21 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 				s.addEvent(fmt.Sprintf("%s watered and cultivated the crop field 🌾 at (%d, %d)", agent.Name, agent.Position.X, agent.Position.Y))
 			}
 		}
+		// Handle timber harvesting
+		if agent.Status == "harvesting timber at forest" {
+			for d := 0; d < 4; d++ {
+				nx := wrap(agent.Position.X+dxDirs[d], s.worldWidth)
+				ny := wrap(agent.Position.Y+dyDirs[d], s.worldHeight)
+				t := s.terrain[ny][nx]
+				if t == string(TerrainForest) && s.objects[ny][nx].Amount > 10 {
+					s.objects[ny][nx].Amount -= 15
+					agent.Resources = clamp(agent.Resources+15, 0, 100)
+					agent.Energy = clamp(agent.Energy-5, 0, 100)
+					s.addEvent(fmt.Sprintf("%s chopped wood and harvested timber at the forest 🪓", agent.Name))
+					break
+				}
+			}
+		}
 
 		// Decrement active agreements on target reached/tick decay
 		if agent.Agreement != nil {
@@ -1108,12 +1131,32 @@ func (s *Sim) queryMesaAgentBehavior() {
 		WorldHeight:  int32(s.worldHeight),
 		Agents:       pbAgents,
 		TerrainTiles: pbTiles,
+		GrassPolicy:  s.grassPolicy,
+		ForestPolicy: s.forestPolicy,
 	}
 
 	resp, err := client.DecideActions(ctx, req)
 	if err != nil {
 		log.Printf("Warning: DecideActions gRPC call failed: %v", err)
 		return
+	}
+
+	// Process newly negotiated court policies
+	if resp.GrassPolicy != "" && resp.GrassPolicy != s.grassPolicy {
+		s.grassPolicy = resp.GrassPolicy
+		if s.grassPolicy == "protected" {
+			s.addEvent("⚖️ Tribunal: Grassland is now PROTECTED! Crop planting is banned 🚫🌾")
+		} else {
+			s.addEvent("⚖️ Tribunal: Agriculture is now ALLOWED on Grassland 🌾")
+		}
+	}
+	if resp.ForestPolicy != "" && resp.ForestPolicy != s.forestPolicy {
+		s.forestPolicy = resp.ForestPolicy
+		if s.forestPolicy == "timber" {
+			s.addEvent("⚖️ Tribunal: Forest is open for TIMBER harvesting 🪓")
+		} else {
+			s.addEvent("⚖️ Tribunal: Forest is RESERVED for berry harvesting 🍓")
+		}
 	}
 
 	for _, dec := range resp.Decisions {

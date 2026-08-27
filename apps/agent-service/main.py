@@ -237,7 +237,19 @@ class MesaSimAgent(mesa.Agent):
                     self.target = (self.agreement.target_x, self.agreement.target_y)
                 else:
                     self.mood = "focused"
-                    if self.status == "planting crops" and self.position == self.target:
+                    
+                    # Timber logging behavior if forest_policy allows it
+                    is_next_to_forest = False
+                    for pos in adjacent_positions:
+                        tile = self.model.terrain_map.get(pos)
+                        if tile and tile.terrain_type == "forest":
+                            is_next_to_forest = True
+                            break
+                    
+                    if is_next_to_forest and self.model.forest_policy == "timber" and (self.role == "Builder" or self.role == "Scout") and random.random() < 0.4:
+                        self.status = "harvesting timber at forest"
+                        self.target = self.position
+                    elif self.status == "planting crops" and self.position == self.target:
                         self.status = "cultivating crops (1/3)"
                         self.target = self.position
                     elif self.status == "cultivating crops (1/3)":
@@ -263,7 +275,7 @@ class MesaSimAgent(mesa.Agent):
                             # Check if we should plant crops
                             crop_tiles = [pos for pos, tile in self.model.terrain_map.items() if tile.terrain_type == "crops"]
                             grass_near_homes = []
-                            if len(crop_tiles) < 15 and self.resources > 40 and self.energy > 40:
+                            if self.model.grass_policy == "agriculture" and len(crop_tiles) < 15 and self.resources > 40 and self.energy > 40:
                                 # Find grass tiles that are close (within 3 steps) to any home tile
                                 homes = [pos for pos, tile in self.model.terrain_map.items() if tile.terrain_type == "home"]
                                 for g_pos, g_tile in self.model.terrain_map.items():
@@ -281,7 +293,10 @@ class MesaSimAgent(mesa.Agent):
                             else:
                                 self.target = self.select_builder_target()
                                 if self.position != self.target:
-                                    self.status = "patrolling road network"
+                                    if self.model.grass_policy == "protected":
+                                        self.status = "patrolling road (crops protected)"
+                                    else:
+                                        self.status = "patrolling road network"
                                 else:
                                     self.status = "maintaining infrastructure"
                         elif self.role == "Researcher":
@@ -304,6 +319,8 @@ class MesaSimModel(mesa.Model):
         self.tick = request.tick
         self.width = request.world_width
         self.height = request.world_height
+        self.grass_policy = request.grass_policy or "agriculture"
+        self.forest_policy = request.forest_policy or "berries"
         self.grid = mesa.space.MultiGrid(self.width, self.height, torus=True)
         
         # Parse terrain and build cache
@@ -361,13 +378,40 @@ class MesaSimModel(mesa.Model):
 
 class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
     def DecideActions(self, request, context):
-        # 1. Instantiate Mesa simulation model with the received state
+        # 1. Determine current policies
+        grass_policy = request.grass_policy or "agriculture"
+        forest_policy = request.forest_policy or "berries"
+        
+        # 2. Check if a weekly negotiation happens at the Court (every 120 ticks)
+        if request.tick > 0 and request.tick % 120 == 0:
+            # Gather statistics for negotiation
+            total_agents = len(request.agents)
+            avg_resources = sum(a.resources for a in request.agents) / total_agents if total_agents > 0 else 100
+            crop_fields_count = sum(1 for tile in request.terrain_tiles if tile.terrain_type == "crops")
+            
+            # Negotiate policies based on collective survival and resource metrics
+            if avg_resources < 55 or crop_fields_count < 8:
+                # Emergency: Food or crops are scarce! Prioritize farming and berry gathering.
+                grass_policy = "agriculture"
+                forest_policy = "berries"
+                print(f"[Court] Negotiation at tick {request.tick}: Hunger/Scarcity detected (avg_resources={avg_resources:.1f}, crop_fields={crop_fields_count}). Decided: Grassland -> Agriculture 🌾, Forest -> Berries 🍓")
+            else:
+                # Abundance: Food is stable, let nature rest and harvest timber instead.
+                grass_policy = "protected"
+                forest_policy = "timber"
+                print(f"[Court] Negotiation at tick {request.tick}: Abundance detected (avg_resources={avg_resources:.1f}, crop_fields={crop_fields_count}). Decided: Grassland -> Protected 🚫🌾, Forest -> Timber Harvesting 🪓")
+
+            # Override the model's policy for this tick so agents immediately conform
+            request.grass_policy = grass_policy
+            request.forest_policy = forest_policy
+
+        # 3. Instantiate Mesa simulation model with the received state
         model = MesaSimModel(request)
         
-        # 2. Advance the model by 1 step
+        # 4. Advance the model by 1 step
         model.step()
         
-        # 3. Harvest decisions from Mesa agents
+        # 5. Harvest decisions from Mesa agents
         decisions = []
         for agent in model.mesa_agents:
             # Rebuild agreement proto if present
@@ -393,7 +437,11 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             )
             decisions.append(dec)
             
-        return sim_pb2.DecideActionsResponse(decisions=decisions)
+        return sim_pb2.DecideActionsResponse(
+            decisions=decisions,
+            grass_policy=grass_policy,
+            forest_policy=forest_policy
+        )
 
 
 def serve():

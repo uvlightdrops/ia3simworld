@@ -26,6 +26,12 @@ func main() {
 	world := getenv("WORLD_SIM_URL", "http://localhost:18081")
 	port := getenv("PORT", "18080")
 
+	// Pre-initialize remoteGatewayURL if provided in environment (e.g. for automatic K8s peering)
+	if envRemote := os.Getenv("REMOTE_GATEWAY_URL"); envRemote != "" {
+		remoteGatewayURL = envRemote
+		log.Printf("[Peering] Auto-connected to remote gateway URL: %s", envRemote)
+	}
+
 	go startBroadcastLoop(world)
 
 	http.HandleFunc("/healthz", withCORS(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
