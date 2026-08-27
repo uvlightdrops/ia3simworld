@@ -6,20 +6,22 @@ Dieses Dokument beschreibt den Betrieb der IA3 SimWorld-Plattform im lokalen Ent
 
 ## 1. Lokaler Betrieb (Non-K8s)
 
-Für eine schnelle lokale Entwicklung können die Services als native Hintergrundprozesse auf dem Host gestartet und gestoppt werden. Die Steuerung erfolgt über automatisierte Skripte:
+Für eine schnelle lokale Entwicklung können die Services als native Hintergrundprozesse auf dem Host gestartet und gestoppt werden. Die Steuerung erfolgt über automatisierte Skripte im Ordner `scripts/dev/` (auch über `make dev-start`/`dev-stop`/`dev-diagnose` verfügbar):
 
-- **Starten:** Führt Port-Prüfungen durch und startet alle Go-, Python- und Node-Services.
+- **Starten:** Führt Port-Prüfungen durch und startet alle Go-, Python- und Node-Services im Hintergrund.
   ```bash
-  ./scripts/dev/start-local.sh
+  ./scripts/dev/start.sh     # oder: make dev-start
   ```
-- **Hintergrund-Diagnose:** Prüft, ob alle lokalen Ports aktiv belegt und `/healthz`-Endpunkte erreichbar sind.
+- **Diagnose & Status:** Prüft, ob alle lokalen Ports aktiv belegt und `/healthz`-Endpunkte erreichbar sind.
   ```bash
-  ./scripts/dev/diagnose-local.sh
+  ./scripts/dev/diagnose.sh  # oder: make dev-diagnose
   ```
 - **Stoppen:** Beendet alle gestarteten Hintergrundprozesse des aktuellen Benutzers sauber.
   ```bash
-  ./scripts/dev/stop-local.sh
+  ./scripts/dev/stop.sh      # oder: make dev-stop
   ```
+
+Für Abwärtskompatibilität können auch weiterhin `./scripts/dev/start-local.sh`, `./scripts/dev/stop-local.sh` und `./scripts/dev/diagnose-local.sh` verwendet werden.
 
 ### Erwartete Endpunkte im lokalen Betrieb:
 - **Web UI:** http://localhost:13000 (bzw. Entwicklungsmodus `:3000`)
@@ -31,9 +33,24 @@ Für eine schnelle lokale Entwicklung können die Services als native Hintergrun
 
 ## 2. Minikube Deployment (Kubernetes)
 
-Das gesamte System lässt sich vollautomatisch in einer lokalen Kubernetes-Umgebung (Minikube) mittels Helm orchestrieren.
+Das gesamte System lässt sich vollautomatisch in einer lokalen Kubernetes-Umgebung (Minikube) mittels Helm orchestrieren. Die Steuerung kann über das `Makefile` oder vollautomatisiert über die Skripte im Ordner `scripts/prod/` erfolgen:
 
-### Deployment-Workflow:
+### Vollautomatisiertes K8s-Management (Empfohlen):
+
+- **Komplettes K8s Setup Starten:** Startet Minikube, baut/verifiziert alle vier Anwendungs-Images, deployt beide Multiplayer-Instanzen (`ia3` und `ia3-two`) via Helm, wartet auf die Pod-Bereitschaft und startet das Port-Forwarding im Hintergrund.
+  ```bash
+  ./scripts/prod/start.sh     # oder: make prod-start
+  ```
+- **K8s Status & Diagnose:** Führt tiefe Diagnosechecks auf Minikube-Ebene, Pod- und Service-Status, Port-Forward-Tunnels sowie HTTP-Endpunkt-Snapshots aus.
+  ```bash
+  ./scripts/prod/diagnose.sh  # oder: make prod-diagnose
+  ```
+- **K8s Setup Stoppen:** Stoppt alle Hintergrund-Portforwarder und deinstalliert die Helm-Releases sauber.
+  ```bash
+  ./scripts/prod/stop.sh      # oder: make prod-stop
+  ```
+
+### Manueller K8s-Workflow (Alternative):
 
 1. **Cluster starten & Helm-Chart deployen:**
    Erstellt den Kubernetes-Namespace `ia3`, baut/lädt die Infrastruktur (PostgreSQL, Redis) und deployt die SimWorld-Anwendungs-Pods.

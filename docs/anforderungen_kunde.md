@@ -18,3 +18,9 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 
 ### 4. Entwicklung & Deployment
 - **[x] GUI-Versions-Tag:** Oben rechts im Header des Frontends wird nun das offizielle Image-Versions-Tag (`v1.0.70`) prominent und elegant angezeigt.
+
+
+
+#### Neu
+
+GUI: Ein modus um die agenten flüssig zu bewegen anstatt zellenweise

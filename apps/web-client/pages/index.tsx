@@ -118,6 +118,7 @@ function InteractiveWorldMap({
   const [showPaths, setShowPaths] = useState(true);
   const [showResources, setShowResources] = useState(true);
   const [showAgentNames, setShowAgentNames] = useState(true);
+  const [showSmoothAnim, setShowSmoothAnim] = useState(true);
 
   const [hoveredTile, setHoveredTile] = useState<{ x: number; y: number } | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -129,9 +130,25 @@ function InteractiveWorldMap({
 
   const tileSize = 16;
 
-  // Animation frame loop for smooth selection ring pulsing
+  // Track previous positions and state update times for smooth movement interpolation
+  const prevPositions = useRef<Record<string, { x: number; y: number }>>({});
+  const lastUpdate = useRef<number>(Date.now());
+  const lastStateRef = useRef<WorldState | null>(null);
+
   useEffect(() => {
-    if (!selectedAgent) return;
+    if (lastStateRef.current) {
+      const prev: Record<string, { x: number; y: number }> = {};
+      lastStateRef.current.agents?.forEach((agent) => {
+        prev[agent.id] = { x: agent.position.x, y: agent.position.y };
+      });
+      prevPositions.current = prev;
+      lastUpdate.current = Date.now();
+    }
+    lastStateRef.current = state;
+  }, [state]);
+
+  // Continuous animation frame loop for smooth movement and selection ring pulsing
+  useEffect(() => {
     let frameId: number;
     const loop = () => {
       setAnimTick((t) => t + 1);
@@ -139,7 +156,7 @@ function InteractiveWorldMap({
     };
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [selectedAgent]);
+  }, []);
 
   // Handle resizing of the container automatically
   useEffect(() => {
@@ -437,8 +454,25 @@ function InteractiveWorldMap({
       state.agents.forEach((agent) => {
         const isSelected = selectedAgent === agent.id;
         if (agent.target && (agent.target.x !== agent.position.x || agent.target.y !== agent.position.y)) {
-          const ax = (agent.position.x + 0.5) * size + offsetX;
-          const ay = (agent.position.y + 0.5) * size + offsetY;
+          let renderX = agent.position.x;
+          let renderY = agent.position.y;
+
+          if (showSmoothAnim) {
+            const prev = prevPositions.current[agent.id];
+            if (prev) {
+              const elapsed = Date.now() - lastUpdate.current;
+              const t = Math.min(1.0, elapsed / 500);
+              const dx = agent.position.x - prev.x;
+              const dy = agent.position.y - prev.y;
+              if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                renderX = prev.x + dx * t;
+                renderY = prev.y + dy * t;
+              }
+            }
+          }
+
+          const ax = (renderX + 0.5) * size + offsetX;
+          const ay = (renderY + 0.5) * size + offsetY;
           const tx = (agent.target.x + 0.5) * size + offsetX;
           const ty = (agent.target.y + 0.5) * size + offsetY;
 
@@ -469,8 +503,25 @@ function InteractiveWorldMap({
 
     // Render agents
     state.agents.forEach((agent) => {
-      const ax = (agent.position.x + 0.5) * size + offsetX;
-      const ay = (agent.position.y + 0.5) * size + offsetY;
+      let renderX = agent.position.x;
+      let renderY = agent.position.y;
+
+      if (showSmoothAnim) {
+        const prev = prevPositions.current[agent.id];
+        if (prev) {
+          const elapsed = Date.now() - lastUpdate.current;
+          const t = Math.min(1.0, elapsed / 500);
+          const dx = agent.position.x - prev.x;
+          const dy = agent.position.y - prev.y;
+          if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+            renderX = prev.x + dx * t;
+            renderY = prev.y + dy * t;
+          }
+        }
+      }
+
+      const ax = (renderX + 0.5) * size + offsetX;
+      const ay = (renderY + 0.5) * size + offsetY;
       let r = size * 0.4;
       r = Math.max(5, r);
 
@@ -543,6 +594,7 @@ function InteractiveWorldMap({
     showPaths,
     showResources,
     showAgentNames,
+    showSmoothAnim,
     dimensions,
     hoveredTile,
     animTick,
@@ -630,6 +682,10 @@ function InteractiveWorldMap({
           <label style={checkboxLabelStyle}>
             <input type="checkbox" checked={showAgentNames} onChange={(e) => setShowAgentNames(e.target.checked)} />
             Names
+          </label>
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" checked={showSmoothAnim} onChange={(e) => setShowSmoothAnim(e.target.checked)} />
+            Smooth
           </label>
         </div>
       </div>
