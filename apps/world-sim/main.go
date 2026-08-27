@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,18 +58,30 @@ type WorldObject struct {
 }
 
 type Agent struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Role      string     `json:"role"`
-	Mood      string     `json:"mood"`
-	Status    string     `json:"status"`
-	Energy    int        `json:"energy"`
-	Position  Position   `json:"position"`
-	Target    Position   `json:"target"`
-	Interests []Interest `json:"interests"`
-	Agreement *Agreement `json:"agreement,omitempty"`
-	Resources int        `json:"resources"` // 0-100
-	Waste     int        `json:"waste"`     // 0-100
+	ID                    string     `json:"id"`
+	Name                  string     `json:"name"`
+	Role                  string     `json:"role"`
+	Mood                  string     `json:"mood"`
+	Status                string     `json:"status"`
+	Energy                int        `json:"energy"`
+	Position              Position   `json:"position"`
+	Target                Position   `json:"target"`
+	Interests             []Interest `json:"interests"`
+	Agreement             *Agreement `json:"agreement,omitempty"`
+	Resources             int        `json:"resources"` // 0-100
+	Waste                 int        `json:"waste"`     // 0-100
+	MissionsCompleted     int        `json:"missionsCompleted"`
+	MissionsAborted       int        `json:"missionsAborted"`
+	SocializedCount       int        `json:"socializedCount"`
+	RefusedSocializeCount int        `json:"refusedSocializeCount"`
+	History               []string   `json:"history"`
+}
+
+func (a *Agent) addHistory(entry string) {
+	a.History = append([]string{entry}, a.History...)
+	if len(a.History) > 50 {
+		a.History = a.History[:50]
+	}
 }
 
 type WorldBounds struct {
@@ -89,11 +102,13 @@ type WorldState struct {
 	LastUpdated  string          `json:"lastUpdated"`
 	GrassPolicy  string          `json:"grassPolicy"`
 	ForestPolicy string          `json:"forestPolicy"`
+	ActiveLaws   []string        `json:"activeLaws"`
 }
 
 type Sim struct {
 	running        atomic.Bool
 	tick           atomic.Uint64
+	tickRateMs     atomic.Int64
 	worldWidth     int
 	worldHeight    int
 	riverWidth     int
@@ -106,6 +121,7 @@ type Sim struct {
 	eventsMu       sync.Mutex
 	grassPolicy    string
 	forestPolicy   string
+	activeLaws     []string
 }
 
 func NewSim() *Sim {
@@ -118,7 +134,9 @@ func NewSim() *Sim {
 		events:         []string{"[System] Simulation world initialized."},
 		grassPolicy:    "agriculture",
 		forestPolicy:   "berries",
+		activeLaws:     []string{},
 	}
+	s.tickRateMs.Store(2000) // Default speed: 2000ms per tick (1 hour game time / 2s real time)
 	s.generateTerrain()
 	s.seedAgents()
 	return s
@@ -662,6 +680,7 @@ func main() {
 				RiverWidth     int     `json:"riverWidth"`
 				LakesDensity   float64 `json:"lakesDensity"`
 				BerriesDensity float64 `json:"berriesDensity"`
+				TickRateMs     int64   `json:"tickRateMs"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -676,7 +695,12 @@ func main() {
 			if params.BerriesDensity >= 0 {
 				s.berriesDensity = params.BerriesDensity
 			}
-			s.addEvent("[System] Landscape settings updated.")
+			if params.TickRateMs > 0 {
+				s.tickRateMs.Store(params.TickRateMs)
+				s.addEvent(fmt.Sprintf("[System] Simulation speed set to %d ms/tick.", params.TickRateMs))
+			} else {
+				s.addEvent("[System] Landscape settings updated.")
+			}
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -686,6 +710,7 @@ func main() {
 			"riverWidth":     s.riverWidth,
 			"lakesDensity":   s.lakesDensity,
 			"berriesDensity": s.berriesDensity,
+			"tickRateMs":     s.tickRateMs.Load(),
 		})
 	})
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
@@ -723,7 +748,7 @@ func (s *Sim) snapshot() WorldState {
 	state := WorldState{
 		Running:     s.running.Load(),
 		Tick:        s.tick.Load(),
-		TickRateMs:  500,
+		TickRateMs:  int(s.tickRateMs.Load()),
 		TotalAgents: len(s.agents),
 		WorldSize: WorldBounds{
 			Width:  s.worldWidth,
@@ -736,15 +761,16 @@ func (s *Sim) snapshot() WorldState {
 		LastUpdated:  time.Now().UTC().Format(time.RFC3339),
 		GrassPolicy:  s.grassPolicy,
 		ForestPolicy: s.forestPolicy,
+		ActiveLaws:   s.activeLaws,
 	}
 	copy(state.Agents, s.agents)
 	return state
 }
 
 func (s *Sim) loop() {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		rate := time.Duration(s.tickRateMs.Load()) * time.Millisecond
+		time.Sleep(rate)
 		if s.running.Load() {
 			s.tick.Add(1)
 			s.advanceAgents(s.tick.Load())
@@ -829,6 +855,22 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 	// 2. Process social contagions and agreements (socializing / cooperating)
 	for i := range s.agents {
 		agent := &s.agents[i]
+
+		// Refused socialization logging if in proximity but emergency needs block it
+		if agent.Resources < 25 || agent.Waste > 75 {
+			for j := range s.agents {
+				if j == i {
+					continue
+				}
+				other := &s.agents[j]
+				if s.toroidalDistance(agent.Position, other.Position) <= 1.5 {
+					if len(agent.History) == 0 || !strings.Contains(agent.History[0], "Refused socialization") {
+						agent.RefusedSocializeCount++
+						agent.addHistory(fmt.Sprintf("Refused socialization with %s due to emergency needs (Resources: %d, Waste: %d) at tick %d", other.Name, agent.Resources, agent.Waste, currentTick))
+					}
+				}
+			}
+		}
 		
 		// Only check social contacts if they are not in an emergency need state (resources < 25 or waste > 75)
 		if agent.Resources >= 25 && agent.Waste <= 75 {
@@ -899,6 +941,10 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 
 										agent.Status = "socializing (" + sharedName + ")"
 										other.Status = "socializing (" + sharedName + ")"
+										
+										agent.addHistory(fmt.Sprintf("Formed %s agreement with %s about %s at tick %d", agreeType, other.Name, sharedName, currentTick))
+										other.addHistory(fmt.Sprintf("Formed %s agreement with %s about %s at tick %d", agreeType, agent.Name, sharedName, currentTick))
+										
 										s.addEvent(fmt.Sprintf("%s and %s formed a %s agreement about %s!", agent.Name, other.Name, agreeType, sharedName))
 									}
 								}
@@ -952,6 +998,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 					agent.Resources = 100
 					agent.Status = "replenished (water)"
 					agent.Mood = "satisfied"
+					agent.addHistory(fmt.Sprintf("Drank water at the lake 💧 at tick %d", currentTick))
 					s.addEvent(fmt.Sprintf("%s drank water at the lake 💧", agent.Name))
 					break
 				} else if t == string(TerrainForest) && s.objects[ny][nx].Amount > 10 {
@@ -959,6 +1006,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 					agent.Resources = 100
 					agent.Status = "replenished (berries)"
 					agent.Mood = "satisfied"
+					agent.addHistory(fmt.Sprintf("Harvested berries in the forest 🍒 at tick %d", currentTick))
 					s.addEvent(fmt.Sprintf("%s harvested berries in the forest 🍒", agent.Name))
 					break
 				} else if t == string(TerrainCrops) && s.objects[ny][nx].Amount > 10 {
@@ -966,6 +1014,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 					agent.Resources = 100
 					agent.Status = "replenished (crops)"
 					agent.Mood = "satisfied"
+					agent.addHistory(fmt.Sprintf("Harvested crops at the farm 🌾 at tick %d", currentTick))
 					s.addEvent(fmt.Sprintf("%s harvested crops at the farm 🌾", agent.Name))
 					break
 				}
@@ -981,6 +1030,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 					agent.Waste = 0
 					agent.Status = "waste disposed"
 					agent.Mood = "satisfied"
+					agent.addHistory(fmt.Sprintf("Disposed waste at the mountaintop 🗑️ at tick %d", currentTick))
 					s.addEvent(fmt.Sprintf("%s disposed waste at the mountaintop 🗑️", agent.Name))
 					break
 				}
@@ -990,7 +1040,46 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			agent.Energy = 100
 			agent.Status = "sleeping at homestead"
 			agent.Mood = "satisfied"
+			agent.addHistory(fmt.Sprintf("Slept and regenerated energy at homestead 🏡 at tick %d", currentTick))
 			s.addEvent(fmt.Sprintf("%s fell asleep cozy at the homestead 🏡", agent.Name))
+		}
+
+		// Handle spiritual symbols (relics) from Geistesleben
+		if s.objects[agent.Position.Y][agent.Position.X].Type == "spiritual_symbol" {
+			s.objects[agent.Position.Y][agent.Position.X] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
+			found := false
+			for j, inst := range agent.Interests {
+				if inst.Name == "Philosophy" {
+					agent.Interests[j].Intensity = clamp(inst.Intensity+50, 0, 100)
+					found = true
+					break
+				}
+			}
+			if !found {
+				agent.Interests = append(agent.Interests, Interest{Name: "Philosophy", Intensity: 50})
+			}
+			agent.addHistory(fmt.Sprintf("Absorbed ancient spiritual relic at (%d, %d) 📖 and unlocked Philosophy at tick %d", agent.Position.X, agent.Position.Y, currentTick))
+			s.addEvent(fmt.Sprintf("✨ %s absorbed the ancient relic's wisdom at (%d, %d) and unlocked Philosophy! 📖", agent.Name, agent.Position.X, agent.Position.Y))
+		} else {
+			for d := 0; d < 4; d++ {
+				nx := wrap(agent.Position.X+dxDirs[d], s.worldWidth)
+				ny := wrap(agent.Position.Y+dyDirs[d], s.worldHeight)
+				if s.objects[ny][nx].Type == "spiritual_symbol" {
+					found := false
+					for j, inst := range agent.Interests {
+						if inst.Name == "Philosophy" {
+							agent.Interests[j].Intensity = clamp(inst.Intensity+10, 0, 100)
+							found = true
+							break
+						}
+					}
+					if !found {
+						agent.Interests = append(agent.Interests, Interest{Name: "Philosophy", Intensity: 15})
+					}
+					agent.addHistory(fmt.Sprintf("Inspired by spiritual relic near (%d, %d) 💡 at tick %d", nx, ny, currentTick))
+					break
+				}
+			}
 		}
 
 		// Handle planting crops
@@ -1000,6 +1089,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 				s.objects[agent.Position.Y][agent.Position.X] = WorldObject{Type: "crops", Amount: 30, MaxAmount: 100}
 				agent.Resources = clamp(agent.Resources-10, 0, 100)
 				agent.Energy = clamp(agent.Energy-10, 0, 100)
+				agent.addHistory(fmt.Sprintf("Planted a new crop field 🌾 at (%d, %d) at tick %d", agent.Position.X, agent.Position.Y, currentTick))
 				s.addEvent(fmt.Sprintf("%s planted a new crop field 🌾 at (%d, %d)!", agent.Name, agent.Position.X, agent.Position.Y))
 			}
 		}
@@ -1008,6 +1098,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			if s.terrain[agent.Position.Y][agent.Position.X] == string(TerrainCrops) {
 				s.objects[agent.Position.Y][agent.Position.X].Amount = clamp(s.objects[agent.Position.Y][agent.Position.X].Amount+25, 0, 100)
 				agent.Energy = clamp(agent.Energy-5, 0, 100)
+				agent.addHistory(fmt.Sprintf("Watered and cultivated crop field 🌾 at (%d, %d) at tick %d", agent.Position.X, agent.Position.Y, currentTick))
 				s.addEvent(fmt.Sprintf("%s watered and cultivated the crop field 🌾 at (%d, %d)", agent.Name, agent.Position.X, agent.Position.Y))
 			}
 		}
@@ -1021,6 +1112,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 					s.objects[ny][nx].Amount -= 15
 					agent.Resources = clamp(agent.Resources+15, 0, 100)
 					agent.Energy = clamp(agent.Energy-5, 0, 100)
+					agent.addHistory(fmt.Sprintf("Chopped wood and harvested timber at forest 🪓 at tick %d", currentTick))
 					s.addEvent(fmt.Sprintf("%s chopped wood and harvested timber at the forest 🪓", agent.Name))
 					break
 				}
@@ -1031,6 +1123,13 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 		if agent.Agreement != nil {
 			agent.Agreement.TicksLeft--
 			if agent.Agreement.TicksLeft <= 0 || (agent.Position.X == agent.Target.X && agent.Position.Y == agent.Target.Y) {
+				if agent.Agreement.Type == "mission" {
+					agent.MissionsCompleted++
+					agent.addHistory(fmt.Sprintf("Completed joint resource mission with %s at tick %d", agent.Agreement.PartnerID, currentTick))
+				} else if agent.Agreement.Type == "socialize" {
+					agent.SocializedCount++
+					agent.addHistory(fmt.Sprintf("Completed socialization with %s at tick %d", agent.Agreement.PartnerID, currentTick))
+				}
 				agent.Agreement = nil
 			}
 		}
@@ -1038,6 +1137,56 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 		// Calculate path step towards target decided by Python Mesa
 		nextStep := s.findNextStep(agent.Position, agent.Target)
 		agent.Position = nextStep
+	}
+
+	// Social Infection: Spread interests between adjacent agents (dist <= 1.5)
+	for i := 0; i < len(s.agents); i++ {
+		for j := i + 1; j < len(s.agents); j++ {
+			a1 := &s.agents[i]
+			a2 := &s.agents[j]
+			if s.toroidalDistance(a1.Position, a2.Position) <= 1.5 {
+				// Share interests from a1 to a2
+				for _, inst1 := range a1.Interests {
+					if inst1.Intensity > 40 {
+						found := false
+						for k, inst2 := range a2.Interests {
+							if inst2.Name == inst1.Name {
+								found = true
+								if inst2.Intensity < inst1.Intensity {
+									a2.Interests[k].Intensity = clamp(inst2.Intensity+5, 0, 100)
+								}
+								break
+							}
+						}
+						if !found {
+							a2.Interests = append(a2.Interests, Interest{Name: inst1.Name, Intensity: 15})
+							a2.addHistory(fmt.Sprintf("Learned interest '%s' from %s! 🎭 at tick %d", inst1.Name, a1.Name, currentTick))
+							s.addEvent(fmt.Sprintf("💡 %s learned about %s from %s! 🎭", a2.Name, inst1.Name, a1.Name))
+						}
+					}
+				}
+				// Share interests from a2 to a1
+				for _, inst2 := range a2.Interests {
+					if inst2.Intensity > 40 {
+						found := false
+						for k, inst1 := range a1.Interests {
+							if inst1.Name == inst2.Name {
+								found = true
+								if inst1.Intensity < inst2.Intensity {
+									a1.Interests[k].Intensity = clamp(inst1.Intensity+5, 0, 100)
+								}
+								break
+							}
+						}
+						if !found {
+							a1.Interests = append(a1.Interests, Interest{Name: inst2.Name, Intensity: 15})
+							a1.addHistory(fmt.Sprintf("Learned interest '%s' from %s! 🎭 at tick %d", inst2.Name, a2.Name, currentTick))
+							s.addEvent(fmt.Sprintf("💡 %s learned about %s from %s! 🎭", a1.Name, inst2.Name, a2.Name))
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// 5. Regrowth and Decomposition loop
@@ -1159,10 +1308,42 @@ func (s *Sim) queryMesaAgentBehavior() {
 		}
 	}
 
+	// Process map updates injected by Python AI Game Managers
+	for _, mu := range resp.MapUpdates {
+		x := int(mu.X)
+		y := int(mu.Y)
+		if x >= 0 && x < s.worldWidth && y >= 0 && y < s.worldHeight {
+			if mu.TerrainType != "" {
+				s.terrain[y][x] = mu.TerrainType
+			}
+			// Set or clear objects
+			if mu.ObjectType != "" {
+				s.objects[y][x] = WorldObject{
+					Type:      mu.ObjectType,
+					Amount:    int(mu.ObjectAmount),
+					MaxAmount: 100,
+				}
+			} else if mu.ObjectAmount == 0 {
+				s.objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
+			}
+		}
+	}
+
+	// Process event logs injected by Python AI Game Managers
+	for _, ie := range resp.InjectedEvents {
+		s.addEvent(ie)
+	}
+
+	// Update active laws in Go from Python Game Managers
+	s.activeLaws = resp.ActiveLaws
+
 	for _, dec := range resp.Decisions {
 		for i := range s.agents {
 			if s.agents[i].ID == dec.AgentId {
 				s.agents[i].Target = Position{X: int(dec.Target.X), Y: int(dec.Target.Y)}
+				if s.agents[i].Status != dec.Status {
+					s.agents[i].addHistory(fmt.Sprintf("Changed action to '%s' at tick %d", dec.Status, s.tick.Load()))
+				}
 				s.agents[i].Status = dec.Status
 				s.agents[i].Mood = dec.Mood
 				s.agents[i].Energy = int(dec.Energy)
@@ -1171,6 +1352,11 @@ func (s *Sim) queryMesaAgentBehavior() {
 				if dec.Agreement != nil {
 					if s.agents[i].Agreement == nil {
 						s.agents[i].Agreement = &Agreement{}
+						if dec.Agreement.Type == "mission" {
+							s.agents[i].addHistory(fmt.Sprintf("Formed joint resource mission agreement with %s at tick %d", dec.Agreement.PartnerId, s.tick.Load()))
+						} else {
+							s.agents[i].addHistory(fmt.Sprintf("Formed socialization agreement with %s at tick %d", dec.Agreement.PartnerId, s.tick.Load()))
+						}
 					}
 					s.agents[i].Agreement.PartnerID = dec.Agreement.PartnerId
 					s.agents[i].Agreement.Type = dec.Agreement.Type
@@ -1178,6 +1364,14 @@ func (s *Sim) queryMesaAgentBehavior() {
 					s.agents[i].Agreement.TargetY = int(dec.Agreement.TargetY)
 					s.agents[i].Agreement.TicksLeft = int(dec.Agreement.TicksLeft)
 				} else {
+					if s.agents[i].Agreement != nil {
+						if s.agents[i].Agreement.Type == "mission" {
+							s.agents[i].MissionsAborted++
+							s.agents[i].addHistory(fmt.Sprintf("Aborted joint mission with %s due to emergency priorities at tick %d", s.agents[i].Agreement.PartnerID, s.tick.Load()))
+						} else if s.agents[i].Agreement.Type == "socialize" {
+							s.agents[i].addHistory(fmt.Sprintf("Aborted socialization with %s due to emergency priorities at tick %d", s.agents[i].Agreement.PartnerID, s.tick.Load()))
+						}
+					}
 					s.agents[i].Agreement = nil
 				}
 				break

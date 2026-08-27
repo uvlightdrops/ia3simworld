@@ -10,13 +10,7 @@ echo "=== Starting IA3 SimWorld Port Forwarders via Minikube ==="
 # Helper function to check if a port is listening
 is_port_listening() {
   local port=$1
-  if ss -tln | grep -q ":$port "; then
-    return 0
-  elif ss -tln | grep -q "\]:$port "; then
-    return 0
-  else
-    return 1
-  fi
+  (timeout 1 bash -c "echo >/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1
 }
 
 # Function to stop forwards on Ctrl+C or exit

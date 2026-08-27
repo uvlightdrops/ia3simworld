@@ -28,6 +28,11 @@ type Agent = {
   agreement?: Agreement | null;
   resources: number;
   waste: number;
+  missionsCompleted?: number;
+  missionsAborted?: number;
+  socializedCount?: number;
+  refusedSocializeCount?: number;
+  history?: string[];
 };
 
 type WorldObject = {
@@ -49,6 +54,7 @@ type WorldState = {
   lastUpdated: string;
   grassPolicy?: string;
   forestPolicy?: string;
+  activeLaws?: string[];
 };
 
 const initialState: WorldState = {
@@ -64,6 +70,7 @@ const initialState: WorldState = {
   lastUpdated: "",
   grassPolicy: "agriculture",
   forestPolicy: "berries",
+  activeLaws: [],
 };
 
 const terrainColors: Record<string, string> = {
@@ -794,7 +801,7 @@ export default function Home() {
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "admin">("map");
-  const [settings, setSettings] = useState({ riverWidth: 2, lakesDensity: 0.20, berriesDensity: 0.20 });
+  const [settings, setSettings] = useState({ riverWidth: 4, lakesDensity: 0.20, berriesDensity: 0.20, tickRateMs: 2000 });
   const [remoteURL, setRemoteURL] = useState("");
   const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
   const [hasReplicaNode, setHasReplicaNode] = useState(false);
@@ -1095,11 +1102,17 @@ export default function Home() {
 
       {/* Controls Bar - Only visible in Live Map View */}
       {activeTab === "map" && (
-        <div style={{ display: "flex", gap: 12, marginBottom: 16, flexShrink: 0 }}>
-          <button style={btnStyle} onClick={start}>▶ Start</button>
-          <button style={btnStyle} onClick={pause}>⏸ Pause</button>
-          <button style={btnStyle} onClick={regenerate}>🔄 Regenerate Landscape</button>
-        </div>
+        connectedRemoteURL ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, background: "rgba(56, 189, 248, 0.1)", padding: "10px 16px", borderRadius: 8, border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 13 }}>
+            <span>🔒 Simulation controlled by Master Node: <b>{connectedRemoteURL}</b> (Observer / Client Mode)</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 12, marginBottom: 16, flexShrink: 0 }}>
+            <button style={btnStyle} onClick={start}>▶ Start</button>
+            <button style={btnStyle} onClick={pause}>⏸ Pause</button>
+            <button style={btnStyle} onClick={regenerate}>🔄 Regenerate Landscape</button>
+          </div>
+        )
       )}
 
       {/* ACTIVE TAB: LIVE MAP GRID */}
@@ -1183,6 +1196,35 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Agent Collaboration Rates Card */}
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>📊 Agent Collaboration Rates</span>
+                <span style={{ fontSize: 10, background: "#0f172a", padding: "2px 6px", borderRadius: 10, color: "#94a3b8" }}>Overview</span>
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
+                {state.agents.map((agent) => {
+                  const c = agentColors[agent.name] ?? "#3b82f6";
+                  const completed = agent.missionsCompleted ?? 0;
+                  const aborted = agent.missionsAborted ?? 0;
+                  const socialized = agent.socializedCount ?? 0;
+                  const refused = agent.refusedSocializeCount ?? 0;
+                  return (
+                    <div key={agent.id} style={{ background: "#0f172a", padding: "6px 8px", borderRadius: 6, display: "flex", flexDirection: "column", gap: 4, borderLeft: `3px solid ${c}` }}>
+                      <div style={{ fontWeight: "bold", fontSize: 12, color: "#f8fafc", display: "flex", justifyContent: "space-between" }}>
+                        <span>{agent.name}</span>
+                        <span style={{ fontSize: 10, color: "#94a3b8" }}>{agent.role}</span>
+                      </div>
+                      <div style={{ fontSize: 11, display: "flex", justifyContent: "space-between", color: "#cbd5e1" }}>
+                        <span>Missions: <b style={{ color: "#10b981" }}>{completed}</b> / <b style={{ color: "#ef4444" }}>{aborted}</b></span>
+                        <span>Social: <b style={{ color: "#10b981" }}>{socialized}</b> / <b style={{ color: "#f59e0b" }}>{refused}</b></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Territorial Laws & Policies Panel */}
             <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1202,6 +1244,18 @@ export default function Home() {
                     {state.forestPolicy === "timber" ? "🪓 Timber logging" : "🍓 Berries harvest"}
                   </span>
                 </div>
+                {state.activeLaws && state.activeLaws.length > 0 && (
+                  <div style={{ marginTop: 8, borderTop: "1px solid #334155", paddingTop: 8 }}>
+                    <span style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 4 }}>📜 Passed AI Legislation:</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {state.activeLaws.map((law, idx) => (
+                        <div key={idx} style={{ fontSize: 11, background: "#1e1b4b", color: "#a5b4fc", border: "1px solid #4338ca", padding: "4px 8px", borderRadius: 4 }}>
+                          🔹 {law}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1264,6 +1318,35 @@ export default function Home() {
                         {interest.name}: <b>{interest.intensity}%</b>
                       </span>
                     ))}
+                  </div>
+
+                  {/* Performance metrics & Rates */}
+                  <div style={{ marginTop: 12, background: "#0f172a", padding: 10, borderRadius: 8, fontSize: 12, border: "1px solid #334155" }}>
+                    <div style={{ color: "#38bdf8", fontWeight: "bold", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                      📊 Cooperation & Social Rates
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 8px" }}>
+                      <div>Missions Met: <b style={{ color: "#10b981" }}>{agent.missionsCompleted ?? 0}</b></div>
+                      <div>Missions Aborted: <b style={{ color: "#ef4444" }}>{agent.missionsAborted ?? 0}</b></div>
+                      <div>Socialized Count: <b style={{ color: "#10b981" }}>{agent.socializedCount ?? 0}</b></div>
+                      <div>Refused Social: <b style={{ color: "#f59e0b" }}>{agent.refusedSocializeCount ?? 0}</b></div>
+                    </div>
+                  </div>
+
+                  {/* Chronicle History Log */}
+                  <div style={{ marginTop: 12 }}>
+                    <p style={{ margin: "0 0 6px 0", fontSize: 12, color: "#94a3b8", fontWeight: "bold" }}>📜 Chronicle Log (Entscheidungen):</p>
+                    <div style={{ background: "#0f172a", borderRadius: 8, padding: 8, border: "1px solid #334155", maxHeight: 150, overflowY: "auto", fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {agent.history && agent.history.length > 0 ? (
+                        agent.history.map((log, idx) => (
+                          <div key={idx} style={{ paddingBottom: 4, borderBottom: "1px solid #1e293b", color: "#cbd5e1" }}>
+                            • {log}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center" }}>No logs recorded yet.</div>
+                      )}
+                    </div>
                   </div>
 
                   {agent.agreement && (
@@ -1469,83 +1552,105 @@ export default function Home() {
               )}
             </div>
 
-            {/* Landscape settings */}
-            <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
-              <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>Landscape Generation Settings</h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>River Width (Flussbreite)</label>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="5" 
-                    value={settings.riverWidth} 
-                    onChange={(e) => updateSettings({ riverWidth: parseInt(e.target.value) })}
-                    style={{ width: "100%", accentColor: "#38bdf8" }} 
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                    <span>Narrow (1)</span>
-                    <span>Current: <b>{settings.riverWidth}</b></span>
-                    <span>Wide (5)</span>
+            {/* Landscape & Speed Settings - Only visible for Master Node */}
+            {!connectedRemoteURL && (
+              <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
+                <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>⚙️ Simulation & Landscape Settings</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4, fontWeight: "bold" }}>⚡ Simulation Speed (Tick Rate MS)</label>
+                    <input 
+                      type="range" 
+                      min="200" 
+                      max="4000" 
+                      step="100" 
+                      value={settings.tickRateMs ?? 2000} 
+                      onChange={(e) => updateSettings({ tickRateMs: parseInt(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#eab308" }} 
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      <span>Fast (200ms)</span>
+                      <span style={{ color: "#eab308" }}>Current: <b>{settings.tickRateMs ?? 2000}ms</b></span>
+                      <span>Slow (4000ms)</span>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Lake Density (Seen-Dichte Threshold)</label>
-                  <input 
-                    type="range" 
-                    min="0.10" 
-                    max="0.35" 
-                    step="0.01" 
-                    value={settings.lakesDensity} 
-                    onChange={(e) => updateSettings({ lakesDensity: parseFloat(e.target.value) })}
-                    style={{ width: "100%", accentColor: "#38bdf8" }} 
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                    <span>Fewer Lakes (0.10)</span>
-                    <span>Current: <b>{settings.lakesDensity}</b></span>
-                    <span>More Lakes (0.35)</span>
+                  <hr style={{ borderColor: "#334155", margin: "4px 0" }} />
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>River Width (Flussbreite)</label>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="5" 
+                      value={settings.riverWidth} 
+                      onChange={(e) => updateSettings({ riverWidth: parseInt(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#38bdf8" }} 
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                      <span>Narrow (1)</span>
+                      <span>Current: <b>{settings.riverWidth}</b></span>
+                      <span>Wide (5)</span>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Wildberry Density (Forest Fruit Probability)</label>
-                  <input 
-                    type="range" 
-                    min="0.05" 
-                    max="0.50" 
-                    step="0.01" 
-                    value={settings.berriesDensity} 
-                    onChange={(e) => updateSettings({ berriesDensity: parseFloat(e.target.value) })}
-                    style={{ width: "100%", accentColor: "#38bdf8" }} 
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
-                    <span>Scarce (0.05)</span>
-                    <span>Current: <b>{Math.round(settings.berriesDensity * 100)}%</b></span>
-                    <span>Abundant (0.50)</span>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Lake Density (Seen-Dichte Threshold)</label>
+                    <input 
+                      type="range" 
+                      min="0.10" 
+                      max="0.35" 
+                      step="0.01" 
+                      value={settings.lakesDensity} 
+                      onChange={(e) => updateSettings({ lakesDensity: parseFloat(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#38bdf8" }} 
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                      <span>Fewer Lakes (0.10)</span>
+                      <span>Current: <b>{settings.lakesDensity}</b></span>
+                      <span>More Lakes (0.35)</span>
+                    </div>
                   </div>
-                </div>
 
-                <button 
-                  onClick={regenerate} 
-                  style={{ 
-                    marginTop: 8, 
-                    padding: "10px", 
-                    background: "#0ea5e9", 
-                    color: "#fff", 
-                    border: "none", 
-                    borderRadius: 6, 
-                    fontWeight: "bold", 
-                    cursor: "pointer",
-                    transition: "background 0.15s ease" 
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "#0284c7")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "#0ea5e9")}
-                >
-                  🔄 Save & Regenerate Landscape
-                </button>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>Wildberry Density (Forest Fruit Probability)</label>
+                    <input 
+                      type="range" 
+                      min="0.05" 
+                      max="0.50" 
+                      step="0.01" 
+                      value={settings.berriesDensity} 
+                      onChange={(e) => updateSettings({ berriesDensity: parseFloat(e.target.value) })}
+                      style={{ width: "100%", accentColor: "#38bdf8" }} 
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1", marginTop: 2 }}>
+                      <span>Scarce (0.05)</span>
+                      <span>Current: <b>{Math.round(settings.berriesDensity * 100)}%</b></span>
+                      <span>Abundant (0.50)</span>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={regenerate} 
+                    style={{ 
+                      marginTop: 8, 
+                      padding: "10px", 
+                      background: "#0ea5e9", 
+                      color: "#fff", 
+                      border: "none", 
+                      borderRadius: 6, 
+                      fontWeight: "bold", 
+                      cursor: "pointer",
+                      transition: "background 0.15s ease" 
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.background = "#0284c7")}
+                    onMouseOut={(e) => (e.currentTarget.style.background = "#0ea5e9")}
+                  >
+                    🔄 Save & Regenerate Landscape
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Multiplayer / Shared World Connection */}
             <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>

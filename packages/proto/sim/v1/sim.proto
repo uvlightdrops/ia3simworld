@@ -65,10 +65,21 @@ message AgentDecision {
   Agreement agreement = 8;
 }
 
+message MapUpdate {
+  int32 x = 1;
+  int32 y = 2;
+  string terrain_type = 3; // e.g. "grass", "crops"
+  string object_type = 4;  // e.g. "spiritual_symbol", "berries", "waste_pile", "" (to clear)
+  int32 object_amount = 5;
+}
+
 message DecideActionsResponse {
   repeated AgentDecision decisions = 1;
   string grass_policy = 2;
   string forest_policy = 3;
+  repeated MapUpdate map_updates = 4;
+  repeated string injected_events = 5;
+  repeated string active_laws = 6;
 }
 
 service AgentDecisionService {

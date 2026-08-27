@@ -12,6 +12,18 @@ from sim.v1 import sim_pb2
 from sim.v1 import sim_pb2_grpc
 
 
+# AI Game Managers state for Social Threefolding (Soziale Dreigliederung)
+class GameManagerState:
+    def __init__(self):
+        self.last_relic_tick = 0
+        self.last_law_tick = 0
+        self.last_econ_tick = 0
+        self.proposed_law = ""
+        self.active_laws = []
+
+state_tracker = GameManagerState()
+
+
 class MesaSimAgent(mesa.Agent):
     def __init__(self, unique_id, model, agent_data):
         super().__init__(model)
@@ -405,16 +417,122 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             request.grass_policy = grass_policy
             request.forest_policy = forest_policy
 
-        # 3. Instantiate Mesa simulation model with the received state
+        # 3. AI Game Managers Logic for Social Threefolding (Soziale Dreigliederung)
+        map_updates = []
+        injected_events = []
+        current_tick = request.tick
+
+        # --- MANAGER A: Geistesleben (Culture & Spirit) ---
+        # Spawns an ancient spiritual relic (every 80 ticks)
+        if current_tick > 0 and (current_tick == 10 or (current_tick - state_tracker.last_relic_tick >= 80)):
+            state_tracker.last_relic_tick = current_tick
+            grass_tiles = [t for t in request.terrain_tiles if t.terrain_type == "grass" and t.object_type == ""]
+            if grass_tiles:
+                target_tile = random.choice(grass_tiles)
+                map_updates.append(sim_pb2.MapUpdate(
+                    x=target_tile.x,
+                    y=target_tile.y,
+                    terrain_type="grass",
+                    object_type="spiritual_symbol",
+                    object_amount=100
+                ))
+                injected_events.append(f"✨ KI Geistesleben: An ancient relic of wisdom was revealed at ({target_tile.x}, {target_tile.y})! Deep interest in Arts & Philosophy is spreading. 📖")
+
+        # --- MANAGER B: Rechtssphäre (Laws & Rights) ---
+        # Propose a bill periodically (every 140 ticks)
+        if current_tick > 0 and (current_tick - state_tracker.last_law_tick >= 140):
+            state_tracker.last_law_tick = current_tick
+            bills = [
+                "Equitable Resource Sharing Act",
+                "Eco-Conservation Bill",
+                "Builder Subsidy Act"
+            ]
+            state_tracker.proposed_law = random.choice(bills)
+            injected_events.append(f"⚖️ KI Rechtssphäre: Proposed the '{state_tracker.proposed_law}' at the courtroom tribunal! Voting will occur this evening.")
+
+        # Voting resolves during evening hour 23
+        hour = current_tick % 24
+        if state_tracker.proposed_law and hour == 23:
+            yes_votes = 0
+            no_votes = 0
+            for agent in request.agents:
+                if state_tracker.proposed_law == "Builder Subsidy Act" and agent.role == "Builder":
+                    yes_votes += 1
+                elif state_tracker.proposed_law == "Eco-Conservation Bill" and agent.mood == "satisfied":
+                    yes_votes += 1
+                elif state_tracker.proposed_law == "Equitable Resource Sharing Act" and agent.energy < 50:
+                    yes_votes += 1
+                else:
+                    if random.random() < 0.45:
+                        yes_votes += 1
+                    else:
+                        no_votes += 1
+            
+            if yes_votes >= no_votes:
+                state_tracker.active_laws.append(state_tracker.proposed_law)
+                injected_events.append(f"⚖️ KI Rechtssphäre: Law PASSED! '{state_tracker.proposed_law}' is now active (Yes: {yes_votes}, No: {no_votes})! 📜")
+            else:
+                injected_events.append(f"⚖️ KI Rechtssphäre: Law REJECTED (Yes: {yes_votes}, No: {no_votes}).")
+            state_tracker.proposed_law = ""
+
+        # --- MANAGER C: Wirtschaftsleben (Economic Life & Physical Challenges) ---
+        # Trigger an economic/disaster event periodically (every 100 ticks)
+        if current_tick > 0 and (current_tick - state_tracker.last_econ_tick >= 100):
+            state_tracker.last_econ_tick = current_tick
+            econ_event = random.choice(["drought", "swarm", "harvest"])
+            if econ_event == "drought":
+                injected_events.append("🌾 KI Wirtschaftsleben: Drought! Lake waters are temporarily depleted and crops grow slower. ☀️")
+                water_tiles = [t for t in request.terrain_tiles if t.terrain_type == "water"]
+                if water_tiles:
+                    for tile in random.sample(water_tiles, min(len(water_tiles), 3)):
+                        map_updates.append(sim_pb2.MapUpdate(
+                            x=tile.x,
+                            y=tile.y,
+                            terrain_type="grass",
+                            object_type="",
+                            object_amount=0
+                        ))
+            elif econ_event == "swarm":
+                injected_events.append("🌾 KI Wirtschaftsleben: Locust Swarm! A cloud of locusts has devoured several farm crop fields! 🦟")
+                crop_tiles = [t for t in request.terrain_tiles if t.terrain_type == "crops"]
+                if crop_tiles:
+                    for tile in random.sample(crop_tiles, min(len(crop_tiles), 3)):
+                        map_updates.append(sim_pb2.MapUpdate(
+                            x=tile.x,
+                            y=tile.y,
+                            terrain_type="grass",
+                            object_type="",
+                            object_amount=0
+                        ))
+            elif econ_event == "harvest":
+                injected_events.append("🌾 KI Wirtschaftsleben: Perfect weather brings a Bumper Harvest! All crop fields are boosted with extra yield. 🌾")
+                crop_tiles = [t for t in request.terrain_tiles if t.terrain_type == "crops"]
+                for tile in crop_tiles:
+                    map_updates.append(sim_pb2.MapUpdate(
+                        x=tile.x,
+                        y=tile.y,
+                        terrain_type="crops",
+                        object_type="crops",
+                        object_amount=min(100, tile.object_amount + 45)
+                    ))
+
+        # 4. Instantiate Mesa simulation model with the received state
         model = MesaSimModel(request)
         
-        # 4. Advance the model by 1 step
+        # 5. Advance the model by 1 step
         model.step()
         
-        # 5. Harvest decisions from Mesa agents
+        # 6. Harvest decisions from Mesa agents and apply active law modifiers
         decisions = []
         for agent in model.mesa_agents:
-            # Rebuild agreement proto if present
+            # Apply active law modifiers to agent decisions
+            if "Builder Subsidy Act" in state_tracker.active_laws and agent.role == "Builder":
+                agent.resources = min(100, agent.resources + 15)
+                agent.energy = min(100, agent.energy + 10)
+            if "Equitable Resource Sharing Act" in state_tracker.active_laws:
+                if agent.resources < 45:
+                    agent.resources = min(100, agent.resources + 15)
+
             agreement_proto = None
             if agent.agreement:
                 agreement_proto = sim_pb2.Agreement(
@@ -440,7 +558,10 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
         return sim_pb2.DecideActionsResponse(
             decisions=decisions,
             grass_policy=grass_policy,
-            forest_policy=forest_policy
+            forest_policy=forest_policy,
+            map_updates=map_updates,
+            injected_events=injected_events,
+            active_laws=state_tracker.active_laws
         )
 
 
