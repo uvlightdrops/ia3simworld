@@ -731,6 +731,8 @@ export default function Home() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "admin">("map");
   const [settings, setSettings] = useState({ riverWidth: 2, lakesDensity: 0.20, berriesDensity: 0.20 });
+  const [remoteURL, setRemoteURL] = useState("");
+  const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
 
   async function refresh() {
     try {
@@ -753,6 +755,37 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Failed to fetch settings", error);
+    }
+  }
+
+  async function fetchMultiplayer() {
+    try {
+      const res = await fetch(`${API}/api/control/multiplayer`);
+      if (res.ok) {
+        const data = await res.json();
+        setConnectedRemoteURL(data.remoteURL || "");
+        if (data.remoteURL && !remoteURL) {
+          setRemoteURL(data.remoteURL);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch multiplayer settings", error);
+    }
+  }
+
+  async function connectMultiplayer(url: string) {
+    try {
+      const res = await fetch(`${API}/api/control/multiplayer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remoteURL: url }),
+      });
+      if (res.ok) {
+        setConnectedRemoteURL(url);
+        void refresh();
+      }
+    } catch (error) {
+      console.error("Failed to connect to remote shared world", error);
     }
   }
 
@@ -800,6 +833,7 @@ export default function Home() {
   useEffect(() => {
     refresh();
     fetchSettings();
+    fetchMultiplayer();
 
     // Establish WebSocket connection with robust polling fallback
     const wsUrl = API.replace(/^http/, "ws") + "/api/ws";
@@ -941,6 +975,12 @@ export default function Home() {
 
         <div style={{ display: "flex", gap: 16, textAlign: "right" }}>
           <div>
+            <div style={headerLabel}>Multiplayer Mode</div>
+            <strong style={{ color: connectedRemoteURL ? "#10b981" : "#94a3b8" }}>
+              {connectedRemoteURL ? "🌍 Shared World" : "🌍 Local Host"}
+            </strong>
+          </div>
+          <div>
             <div style={headerLabel}>Simulation Time</div>
             <strong style={{ color: phaseColor }}>{phase} ({timeStr})</strong>
           </div>
@@ -955,6 +995,10 @@ export default function Home() {
           <div>
             <div style={headerLabel}>World Size</div>
             <strong>{state.worldSize.width}x{state.worldSize.height}</strong>
+          </div>
+          <div>
+            <div style={headerLabel}>Image Version</div>
+            <strong style={{ color: "#38bdf8" }}>v1.0.70</strong>
           </div>
         </div>
       </div>
@@ -1388,6 +1432,87 @@ export default function Home() {
                 >
                   🔄 Save & Regenerate Landscape
                 </button>
+              </div>
+            </div>
+
+            {/* Multiplayer / Shared World Connection */}
+            <div style={{ background: "#0f172a", padding: 16, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
+              <h4 style={{ margin: "0 0 12px 0", color: "#38bdf8", fontSize: 14 }}>🌍 Multiplayer & Shared World</h4>
+              <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#94a3b8" }}>
+                Connect to another cluster instance to play in a shared world. The current instance will fetch and control state from the remote host.
+              </p>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>Remote API Gateway URL</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. http://localhost:18080" 
+                    value={remoteURL} 
+                    onChange={(e) => setRemoteURL(e.target.value)}
+                    style={{ 
+                      width: "100%", 
+                      background: "#1e293b", 
+                      border: "1px solid #475569", 
+                      borderRadius: 6, 
+                      padding: "8px 10px", 
+                      color: "#f8fafc", 
+                      fontSize: 13,
+                      boxSizing: "border-box"
+                    }} 
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button 
+                    onClick={() => connectMultiplayer(remoteURL)} 
+                    style={{ 
+                      flex: 1,
+                      padding: "8px 12px", 
+                      background: "#10b981", 
+                      color: "#fff", 
+                      border: "none", 
+                      borderRadius: 6, 
+                      fontWeight: "bold", 
+                      cursor: "pointer",
+                      fontSize: 13,
+                      transition: "background 0.15s ease" 
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.background = "#059669")}
+                    onMouseOut={(e) => (e.currentTarget.style.background = "#10b981")}
+                  >
+                    Join Shared World
+                  </button>
+                  
+                  {connectedRemoteURL && (
+                    <button 
+                      onClick={() => connectMultiplayer("")} 
+                      style={{ 
+                        padding: "8px 12px", 
+                        background: "#ef4444", 
+                        color: "#fff", 
+                        border: "none", 
+                        borderRadius: 6, 
+                        fontWeight: "bold", 
+                        cursor: "pointer",
+                        fontSize: 13,
+                        transition: "background 0.15s ease" 
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = "#dc2626")}
+                      onMouseOut={(e) => (e.currentTarget.style.background = "#ef4444")}
+                    >
+                      Disconnect
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 11, color: connectedRemoteURL ? "#10b981" : "#94a3b8", marginTop: 4 }}>
+                  Status: {connectedRemoteURL ? (
+                    <span>Connected to <b>{connectedRemoteURL}</b> (Shared World Mode)</span>
+                  ) : (
+                    <span>Single Player Mode (Hosting Local World)</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

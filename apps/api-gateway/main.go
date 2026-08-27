@@ -13,11 +13,13 @@ import (
 )
 
 var (
-	clients   = make(map[*websocket.Conn]bool)
-	clientsMu sync.Mutex
-	upgrader  = websocket.Upgrader{
+	clients            = make(map[*websocket.Conn]bool)
+	clientsMu          sync.Mutex
+	upgrader           = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
+	remoteGatewayURL   string
+	remoteGatewayMutex sync.RWMutex
 )
 
 func main() {
@@ -27,12 +29,123 @@ func main() {
 	go startBroadcastLoop(world)
 
 	http.HandleFunc("/healthz", withCORS(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	http.HandleFunc("/api/control/start", withCORS(proxyPost(world+"/control/start")))
-	http.HandleFunc("/api/control/pause", withCORS(proxyPost(world+"/control/pause")))
-	http.HandleFunc("/api/control/regenerate", withCORS(proxyPost(world+"/control/regenerate")))
-	http.HandleFunc("/api/control/settings", withCORS(proxySettings(world+"/control/settings")))
+	
+	http.HandleFunc("/api/control/start", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/start"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/start"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+	}))
+
+	http.HandleFunc("/api/control/pause", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/pause"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/pause"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+	}))
+
+	http.HandleFunc("/api/control/regenerate", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/regenerate"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/regenerate"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Post(target, "application/json", nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+	}))
+
+	http.HandleFunc("/api/control/settings", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/control/settings"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/control/settings"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		if r.Method == http.MethodPost {
+			resp, err := http.Post(target, "application/json", r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			w.WriteHeader(resp.StatusCode)
+			_, _ = io.Copy(w, resp.Body)
+			return
+		}
+		// GET
+		resp, err := http.Get(target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/control/multiplayer", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var params struct {
+				RemoteURL string `json:"remoteURL"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			remoteGatewayMutex.Lock()
+			remoteGatewayURL = params.RemoteURL
+			remoteGatewayMutex.Unlock()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// GET
+		remoteGatewayMutex.RLock()
+		url := remoteGatewayURL
+		remoteGatewayMutex.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"remoteURL": url,
+		})
+	}))
+
 	http.HandleFunc("/api/state", withCORS(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := http.Get(world + "/state")
+		target := world + "/state"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/state"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Get(target)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -81,7 +194,14 @@ func startBroadcastLoop(worldSimURL string) {
 	}
 
 	for range ticker.C {
-		resp, err := http.Get(worldSimURL + "/state")
+		target := worldSimURL + "/state"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/state"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Get(target)
 		if err != nil {
 			continue
 		}
