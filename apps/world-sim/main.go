@@ -95,6 +95,31 @@ type WorldBounds struct {
 	Height int `json:"height"`
 }
 
+type GoodCategory string
+
+const (
+	CategoryRaw       GoodCategory = "ROHSTOFF"
+	CategoryProcessed GoodCategory = "VERARBEITET"
+	CategoryCulture   GoodCategory = "KULTURGUT"
+	CategoryWaste     GoodCategory = "ABFALL"
+)
+
+type GoodType struct {
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	Category   GoodCategory `json:"category"`
+	Durability float64      `json:"durability"`
+	WasteRate  float64      `json:"wasteRate"`
+}
+
+type Recipe struct {
+	ID         string             `json:"id"`
+	Name       string             `json:"name"`
+	Inputs     map[string]float64 `json:"inputs"`
+	Outputs    map[string]float64 `json:"outputs"`
+	LaborTicks int                `json:"laborTicks"`
+}
+
 type HumanInteraction struct {
 	NPCID       string   `json:"npcId"`
 	NPCName     string   `json:"npcName"`
@@ -185,6 +210,10 @@ type Sim struct {
 	managerAThoughts       []string
 	managerBThoughts       []string
 	managerCThoughts       []string
+
+	// Economy Goods & Recipes Taxonomy
+	goods                  []GoodType
+	recipes                []Recipe
 }
 
 func NewSim() *Sim {
@@ -219,6 +248,25 @@ func NewSim() *Sim {
 	}
 	s.sectors[Position{X: 0, Y: 0}] = true
 	s.tickRateMs.Store(2000) // Default speed: 2000ms per tick (1 hour game time / 2s real time)
+
+	// Load and parse Economy taxonomy if exists
+	taxPath := "/home/flow/dev_flow/ia3simworld/packages/events/economy_taxonomy.json"
+	if fileBytes, err := os.ReadFile(taxPath); err == nil {
+		var taxData struct {
+			Goods   []GoodType `json:"goods"`
+			Recipes []Recipe   `json:"recipes"`
+		}
+		if err := json.Unmarshal(fileBytes, &taxData); err == nil {
+			s.goods = taxData.Goods
+			s.recipes = taxData.Recipes
+			s.addEvent(fmt.Sprintf("[System] Economy taxonomy loaded with %d goods and %d recipes.", len(s.goods), len(s.recipes)))
+		} else {
+			log.Printf("Failed to unmarshal economy_taxonomy.json: %v", err)
+		}
+	} else {
+		log.Printf("Failed to read economy_taxonomy.json: %v", err)
+	}
+
 	s.generateTerrain()
 	s.seedAgents()
 	return s

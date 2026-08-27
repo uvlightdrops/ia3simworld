@@ -2900,6 +2900,7 @@ export default function Home() {
                 { id: "agent-logic", label: "🧠 Agent Logic & Society" },
                 { id: "opensim", label: "🕶️ OpenSIM Integration" },
                 { id: "ar-realworld", label: "📱 AR & Real-World Specs" },
+                { id: "economy-taxonomy", label: "🌾 Economy & Goods Taxonomy" },
                 { id: "backlog", label: "📋 Open Backlog Tasks" }
               ].map((doc) => {
                 const isSel = aboutSubTab === doc.id;
@@ -3039,6 +3040,68 @@ export default function Home() {
                     <p style={{ margin: 0 }}>
                       <b>4. Live-Sensoren & Wetter-Sychronisation:</b> Einbindung von Live-APIs zur Synchronisation des echten Wetters in Augsburg sowie Pegelstände von Lech und Wertach, um Dürren oder reiche Ernten in Echtzeit in der Dreigliederungssimulation widerzuspiegeln.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {aboutSubTab === "economy-taxonomy" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <h4 style={{ margin: 0, color: "#38bdf8", fontSize: 20, borderBottom: "1px solid #1e293b", paddingBottom: 8 }}>
+                    🌾 Wirtschaftsleben: Produktionsketten & Güter-Taxonomie (Eco-Standards)
+                  </h4>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: "1.6", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <p style={{ margin: 0 }}>
+                      Die Spiel-Wirtschaft orientiert sich an etablierten Multi-User-Standards (wie <i>Eco</i> oder <i>Eve Online</i>) und adaptiert diese an die Prinzipien der <b>Sozialen Dreigliederung</b>:
+                    </p>
+                    <div style={{ background: "#1e293b", padding: 14, borderRadius: 8, border: "1px solid #334155" }}>
+                      <strong style={{ color: "#38bdf8", display: "block", marginBottom: 6 }}>1. Taxonomie-Klassen:</strong>
+                      <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <li><b>ROHSTOFF (Tier 0):</b> Naturressourcen wie Holz, Weizen, Stein und Wasser.</li>
+                        <li><b>VERARBEITET (Tier 1 & 2):</b> Veredelte Güter wie Mehl, Brot, Holzbohlen und Werkzeuge.</li>
+                        <li><b>KULTURGUT (Immateriell):</b> Rezepte, Baupläne und Bücher. Freie Güter des Geisteslebens, die sich bei Vervielfältigung nicht abnutzen oder entziehen.</li>
+                        <li><b>ABFALL:</b> Kompost und Müll, der bei Herstellung/Konsum entsteht (Kreislauf-Prinzip).</li>
+                      </ul>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid #1e293b", paddingTop: 10 }}>
+                      <strong style={{ color: "#38bdf8", display: "block", marginBottom: 6 }}>2. Produktions-Rezepturen (Recipe Graph):</strong>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" }}>
+                        <thead>
+                          <tr style={{ borderBottom: "2px solid #334155", color: "#94a3b8" }}>
+                            <th style={{ padding: 6 }}>Rezept</th>
+                            <th style={{ padding: 6 }}>Input-Stoffe</th>
+                            <th style={{ padding: 6 }}>Output-Güter</th>
+                            <th style={{ padding: 6 }}>Arbeit (Ticks)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr style={{ borderBottom: "1px solid #1e293b" }}>
+                            <td style={{ padding: 6, fontWeight: "bold" }}>Weizen mahlen</td>
+                            <td style={{ padding: 6 }}>2 Weizen</td>
+                            <td style={{ padding: 6 }}>1 Mehl + 0.2 Kompost</td>
+                            <td style={{ padding: 6 }}>4 Ticks</td>
+                          </tr>
+                          <tr style={{ borderBottom: "1px solid #1e293b" }}>
+                            <td style={{ padding: 6, fontWeight: "bold" }}>Brot backen</td>
+                            <td style={{ padding: 6 }}>1 Mehl + 1 Wasser</td>
+                            <td style={{ padding: 6 }}>2 Brot + 0.1 Kompost</td>
+                            <td style={{ padding: 6 }}>6 Ticks</td>
+                          </tr>
+                          <tr style={{ borderBottom: "1px solid #1e293b" }}>
+                            <td style={{ padding: 6, fontWeight: "bold" }}>Holz sägen</td>
+                            <td style={{ padding: 6 }}>1 Holz</td>
+                            <td style={{ padding: 6 }}>3 Holzbohlen + 0.3 Kompost</td>
+                            <td style={{ padding: 6 }}>3 Ticks</td>
+                          </tr>
+                          <tr style={{ borderBottom: "1px solid #1e293b" }}>
+                            <td style={{ padding: 6, fontWeight: "bold" }}>Schmieden</td>
+                            <td style={{ padding: 6 }}>2 Stein + 1 Holzbohle</td>
+                            <td style={{ padding: 6 }}>1 Werkzeug</td>
+                            <td style={{ padding: 6 }}>8 Ticks</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

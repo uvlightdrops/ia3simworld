@@ -1,0 +1,132 @@
+{
+  "goods": [
+    {
+      "id": "wood",
+      "name": "Holz",
+      "category": "ROHSTOFF",
+      "durability": 1.0,
+      "waste_rate": 0.1
+    },
+    {
+      "id": "wheat",
+      "name": "Weizen",
+      "category": "ROHSTOFF",
+      "durability": 0.8,
+      "waste_rate": 0.05
+    },
+    {
+      "id": "stone",
+      "name": "Stein",
+      "category": "ROHSTOFF",
+      "durability": 1.0,
+      "waste_rate": 0.0
+    },
+    {
+      "id": "water",
+      "name": "Wasser",
+      "category": "ROHSTOFF",
+      "durability": 1.0,
+      "waste_rate": 0.0
+    },
+    {
+      "id": "flour",
+      "name": "Mehl",
+      "category": "VERARBEITET",
+      "durability": 0.9,
+      "waste_rate": 0.05
+    },
+    {
+      "id": "bread",
+      "name": "Brot",
+      "category": "VERARBEITET",
+      "durability": 0.5,
+      "waste_rate": 0.1
+    },
+    {
+      "id": "plank",
+      "name": "Holzbohlen",
+      "category": "VERARBEITET",
+      "durability": 1.0,
+      "waste_rate": 0.15
+    },
+    {
+      "id": "tool",
+      "name": "Werkzeug",
+      "category": "VERARBEITET",
+      "durability": 0.95,
+      "waste_rate": 0.2
+    },
+    {
+      "id": "recipe_bread",
+      "name": "Backanleitung Brot",
+      "category": "KULTURGUT",
+      "durability": 1.0,
+      "waste_rate": 0.0
+    },
+    {
+      "id": "philosophy_book",
+      "name": "Philosophieschrift",
+      "category": "KULTURGUT",
+      "durability": 1.0,
+      "waste_rate": 0.0
+    },
+    {
+      "id": "compost",
+      "name": "Kompost",
+      "category": "ABFALL",
+      "durability": 0.4,
+      "waste_rate": 0.0
+    }
+  ],
+  "recipes": [
+    {
+      "id": "milling",
+      "name": "Weizen mahlen",
+      "inputs": {
+        "wheat": 2.0
+      },
+      "outputs": {
+        "flour": 1.0,
+        "compost": 0.2
+      },
+      "labor_ticks": 4
+    },
+    {
+      "id": "baking",
+      "name": "Brot backen",
+      "inputs": {
+        "flour": 1.0,
+        "water": 1.0
+      },
+      "outputs": {
+        "bread": 2.0,
+        "compost": 0.1
+      },
+      "labor_ticks": 6
+    },
+    {
+      "id": "sawing",
+      "name": "Holz sägen",
+      "inputs": {
+        "wood": 1.0
+      },
+      "outputs": {
+        "plank": 3.0,
+        "compost": 0.3
+      },
+      "labor_ticks": 3
+    },
+    {
+      "id": "forging",
+      "name": "Werkzeuge schmieden",
+      "inputs": {
+        "stone": 2.0,
+        "plank": 1.0
+      },
+      "outputs": {
+        "tool": 1.0
+      },
+      "labor_ticks": 8
+    }
+  ]
+}
