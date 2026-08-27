@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"log"
 	"math"
 	"math/rand"
@@ -868,6 +871,153 @@ func main() {
 	http.HandleFunc("/state", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(s.snapshot())
+	})
+
+	http.HandleFunc("/state/opensim/png", func(w http.ResponseWriter, r *http.Request) {
+		// Generate a standard OpenSim-compatible 256x256 8-bit grayscale PNG heightmap.
+		// OpenSim regions are exactly 256m x 256m, where each pixel is 1 square meter.
+		// Grayscale value (0-255) represents terrain height in meters.
+		img := image.NewGray(image.Rect(0, 0, 256, 256))
+
+		// We sample our continuous infinite noise function across a 256x256 area.
+		// To match the layout of our main starting sector (0,0) of size 96x96 tiles, 
+		// we scale our coordinate sampling. Each OpenSim meter is scaled slightly so that
+		// the main sector's terrain feature mapping is smoothly represented.
+		// Scale factor maps 256 pixels to 96 tiles: scale = 96.0 / 256.0
+		scale := 96.0 / 256.0
+
+		for y := 0; y < 256; y++ {
+			for x := 0; x < 256; x++ {
+				// Map OpenSim coordinate to the continuous absolute coordinates of the seed sector (0,0)
+				absX := float64(x) * scale
+				absY := float64(y) * scale
+
+				// Sample noise (matching our infiniteNoise2D in main.go)
+				n1 := s.infiniteNoise2D(absX, absY)
+				n2 := s.infiniteNoise2D(absX*2.5, absY*2.5)
+				h := (n1 * 0.7) + (n2 * 0.3)
+
+				// Continuous heights in meters: Water/lake bed is low, hills are medium, rocks are peaks.
+				// OpenSim water level is typically 20 meters.
+				var heightVal float64
+				if h < s.lakesDensity {
+					// Underwater bed: map noise 0 to lakesDensity smoothly to height 5m to 19m
+					t := h / s.lakesDensity
+					heightVal = 5.0 + t*14.0
+				} else if h < 0.58 {
+					// Grasslands: height 21m to 40m
+					t := (h - s.lakesDensity) / (0.58 - s.lakesDensity)
+					heightVal = 21.0 + t*19.0
+				} else if h < 0.78 {
+					// Forests: height 41m to 85m
+					t := (h - 0.58) / (0.78 - 0.58)
+					heightVal = 41.0 + t*44.0
+				} else {
+					// Rocks/Mountain peaks: height 86m to 180m
+					t := (h - 0.78) / (1.0 - 0.78)
+					heightVal = 86.0 + t*94.0
+				}
+
+				// Clamp to 0-255 range and set grayscale pixel value
+				val := uint8(clamp(int(heightVal), 0, 255))
+				img.SetGray(x, y, color.Gray{Y: val})
+			}
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Disposition", `attachment; filename="opensim_terrain_256.png"`)
+		_ = png.Encode(w, img)
+	})
+
+	http.HandleFunc("/state/opensim/json", func(w http.ResponseWriter, _ *http.Request) {
+		// Provides a lightweight OpenSim-compatible state endpoint, specifically formatted
+		// to allow Linden Scripting Language (LSL) scripts in OpenSim to fetch, replicate
+		// and position avatars/prims.
+		
+		type OpenSimAgent struct {
+			ID       string  `json:"id"`
+			Name     string  `json:"name"`
+			Role     string  `json:"role"`
+			Status   string  `json:"status"`
+			Mood     string  `json:"mood"`
+			OpenSimX float64 `json:"opensimX"` // Scaled to standard 256m region
+			OpenSimY float64 `json:"opensimY"` // Scaled to standard 256m region
+			OpenSimZ float64 `json:"opensimZ"` // Estimated height from heightmap
+		}
+
+		type OpenSimObject struct {
+			Type     string  `json:"type"`
+			Amount   int     `json:"amount"`
+			OpenSimX float64 `json:"opensimX"`
+			OpenSimY float64 `json:"opensimY"`
+			OpenSimZ float64 `json:"opensimZ"`
+		}
+
+		// Calculate coordinate scale factors mapping stitched world map onto standard 256m region
+		scaleX := 256.0 / float64(s.worldWidth)
+		scaleY := 256.0 / float64(s.worldHeight)
+
+		// Estimate height function for absolute coordinate (used for prim rezzing)
+		getHeight := func(x, y int) float64 {
+			absX := float64(s.minSectorX*96 + x)
+			absY := float64(s.minSectorY*96 + y)
+			n1 := s.infiniteNoise2D(absX, absY)
+			n2 := s.infiniteNoise2D(absX*2.5, absY*2.5)
+			h := (n1 * 0.7) + (n2 * 0.3)
+			if h < s.lakesDensity {
+				return 5.0 + (h/s.lakesDensity)*14.0
+			} else if h < 0.58 {
+				return 21.0 + ((h-s.lakesDensity)/(0.58-s.lakesDensity))*19.0
+			} else if h < 0.78 {
+				return 41.0 + ((h-0.58)/(0.78-0.58))*44.0
+			}
+			return 86.0 + ((h-0.78)/(1.0-0.78))*94.0
+		}
+
+		osAgents := make([]OpenSimAgent, len(s.agents))
+		for i, a := range s.agents {
+			ox := float64(a.Position.X) * scaleX
+			oy := float64(a.Position.Y) * scaleY
+			osAgents[i] = OpenSimAgent{
+				ID:       a.ID,
+				Name:     a.Name,
+				Role:     a.Role,
+				Status:   a.Status,
+				Mood:     a.Mood,
+				OpenSimX: ox,
+				OpenSimY: oy,
+				OpenSimZ: getHeight(a.Position.X, a.Position.Y),
+			}
+		}
+
+		var osObjects []OpenSimObject
+		for y := 0; y < s.worldHeight; y++ {
+			for x := 0; x < s.worldWidth; x++ {
+				obj := s.objects[y][x]
+				if obj.Type != "" {
+					osObjects = append(osObjects, OpenSimObject{
+						Type:     obj.Type,
+						Amount:   obj.Amount,
+						OpenSimX: float64(x) * scaleX,
+						OpenSimY: float64(y) * scaleY,
+						OpenSimZ: getHeight(x, y),
+					})
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"tick":              s.tick.Load(),
+			"running":           s.running.Load(),
+			"simWorldWidth":     s.worldWidth,
+			"simWorldHeight":    s.worldHeight,
+			"openSimSize":       256,
+			"waterHeight":       20.0,
+			"agents":            osAgents,
+			"objects":           osObjects,
+			"discoveredSectors": s.snapshot().DiscoveredSectors,
+		})
 	})
 
 	log.Println("world-sim listening :" + port)

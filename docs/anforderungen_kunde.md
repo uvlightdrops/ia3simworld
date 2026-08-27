@@ -67,3 +67,6 @@ Alle fachlichen, architektonischen und Multiplayer-bezogenen Entwicklungsziele w
 - **[x] KI "Geistesleben" verwaltet die Interessen, dies bedeutet mittelfristig auch Künste, Wissenschaften sowie spirituelles. Den playern(agenten) werden diese mit üblichen Spielprinzipien zugeteilt: Sie finden symbole an koordinaten oder zufällig oder wie schon implementiert, durch "ansteckung"**
 - **[x] KI "Rechtssphäre" entwickelt die möglicherweise nützlichen Verhandlungsthemen und baut an Gesetzestexten. Diese werden von Zeit zu zeit den spielern vorgelegt, so wie die Nutzungsvereinbarungen für die Gebiete;**
 - **[x] KI "Wirtschaftsleben" begleitet eine langsam komplexer werdende Wirtschaft und die physikalischen Ressourcen sowie Hindernisse wie Wetterschäden.**
+
+##### Interoperabilität mit OpenSIM
+- **[x] Die Weltkarte ist kompatibel mit OpenSIM. Das System stellt eine standardisierte 256x256-Grayscale-Terrain-PNG-Heightmap bereit, die direkt als OpenSIM-Region hochgeladen werden kann. Zudem liefert ein JSON-Endpoint alle Agenten und Objekte skaliert auf OpenSIM-Metermessungen für einfache LSL-Replikation.**

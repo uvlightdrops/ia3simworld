@@ -200,6 +200,45 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	}))
 
+	http.HandleFunc("/api/state/opensim/png", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/state/opensim/png"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/state/opensim/png"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Get(target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Disposition", `attachment; filename="opensim_terrain_256.png"`)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
+	http.HandleFunc("/api/state/opensim/json", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		target := world + "/state/opensim/json"
+		remoteGatewayMutex.RLock()
+		if remoteGatewayURL != "" {
+			target = remoteGatewayURL + "/api/state/opensim/json"
+		}
+		remoteGatewayMutex.RUnlock()
+
+		resp, err := http.Get(target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+
 	http.HandleFunc("/api/ws", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
