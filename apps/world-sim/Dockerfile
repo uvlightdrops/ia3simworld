@@ -1,4 +1,6 @@
 FROM golang:alpine AS build
+# Cache buster to force re-compiling latest main.go with spacious landscape, embed and centering fixes
+RUN echo "building fresh"
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

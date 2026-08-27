@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	pb "world-sim/simv1"
 )
+
+//go:embed economy_taxonomy.json
+var embeddedTaxonomy []byte
 
 type Terrain string
 
@@ -188,6 +192,8 @@ type Sim struct {
 	worldHeight    int
 	riverWidth     int
 	lakesDensity   float64
+	grassThreshold float64
+	forestThreshold float64
 	berriesDensity float64
 	terrain        [][]string
 	objects        [][]WorldObject
@@ -239,17 +245,15 @@ func NewSim() *Sim {
 		worldWidth:             256,
 		worldHeight:            256,
 		riverWidth:             4,
-		lakesDensity:           0.20,
+		lakesDensity:           0.12,
+		grassThreshold:         0.75,
+		forestThreshold:        0.90,
 		berriesDensity:         0.20,
 		events:                 []string{"[System] Simulation world initialized."},
 		grassPolicy:            "agriculture",
 		forestPolicy:           "berries",
 		activeLaws:             []string{},
 		sectors:                make(map[Position]bool),
-		minSectorX:             0,
-		maxSectorX:             0,
-		minSectorY:             0,
-		maxSectorY:             0,
 		scenarioActive:         false,
 		scenarioType:           "",
 		scenarioState:          "",
@@ -264,29 +268,55 @@ func NewSim() *Sim {
 		managerBThoughts:       []string{"[System] Legal KI started."},
 		managerCThoughts:       []string{"[System] Economic KI started."},
 	}
-	s.sectors[Position{X: 0, Y: 0}] = true
+
+	nodeName := getenv("NODE_NAME", "ia3")
+	if nodeName == "ia3-two" {
+		s.sectors[Position{X: 1, Y: 0}] = true
+		s.minSectorX = 1
+		s.maxSectorX = 1
+		s.minSectorY = 0
+		s.maxSectorY = 0
+	} else if nodeName == "ia3-three" {
+		s.sectors[Position{X: 0, Y: 1}] = true
+		s.minSectorX = 0
+		s.maxSectorX = 0
+		s.minSectorY = 1
+		s.maxSectorY = 1
+	} else {
+		s.sectors[Position{X: 0, Y: 0}] = true
+		s.minSectorX = 0
+		s.maxSectorX = 0
+		s.minSectorY = 0
+		s.maxSectorY = 0
+	}
+
 	s.tickRateMs.Store(2000) // Default speed: 2000ms per tick (1 hour game time / 2s real time)
 
-	// Load and parse Economy taxonomy if exists
+	// Load and parse Economy taxonomy if exists, with embedded fallback for K8s docker containers
+	var fileBytes []byte
+	var err error
 	taxPath := "/home/flow/dev_flow/ia3simworld/packages/events/economy_taxonomy.json"
-	if fileBytes, err := os.ReadFile(taxPath); err == nil {
-		var taxData struct {
-			Goods   []GoodType `json:"goods"`
-			Recipes []Recipe   `json:"recipes"`
-		}
-		if err := json.Unmarshal(fileBytes, &taxData); err == nil {
-			s.goods = taxData.Goods
-			s.recipes = taxData.Recipes
-			s.addEvent(fmt.Sprintf("[System] Economy taxonomy loaded with %d goods and %d recipes.", len(s.goods), len(s.recipes)))
-		} else {
-			log.Printf("Failed to unmarshal economy_taxonomy.json: %v", err)
-		}
+	if fileBytes, err = os.ReadFile(taxPath); err != nil {
+		// Use embedded taxonomy when running inside containers
+		fileBytes = embeddedTaxonomy
+	}
+
+	var taxData struct {
+		Goods   []GoodType `json:"goods"`
+		Recipes []Recipe   `json:"recipes"`
+	}
+	if err := json.Unmarshal(fileBytes, &taxData); err == nil {
+		s.goods = taxData.Goods
+		s.recipes = taxData.Recipes
+		s.addEvent(fmt.Sprintf("[System] Economy taxonomy loaded with %d goods and %d recipes.", len(s.goods), len(s.recipes)))
 	} else {
-		log.Printf("Failed to read economy_taxonomy.json: %v", err)
+		log.Printf("Failed to unmarshal economy_taxonomy.json: %v", err)
 	}
 
 	s.generateTerrain()
-	s.seedAgents()
+	if nodeName == "ia3" {
+		s.seedAgents()
+	}
 	return s
 }
 
@@ -313,7 +343,7 @@ func (s *Sim) generateTerrain() {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	
 	// Create a random seed grid for interpolation
-	const gridScale = 8
+	const gridScale = 24
 	seedGridWidth := (s.worldWidth / gridScale) + 2
 	seedGridHeight := (s.worldHeight / gridScale) + 2
 	seedGrid := make([][]float64, seedGridHeight)
@@ -422,10 +452,10 @@ func (s *Sim) generateTerrain() {
 			case h < s.lakesDensity:
 				terrain[y][x] = string(TerrainWater)    // Large, connected lakes/oceans
 				objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
-			case h < 0.58:
+			case h < s.grassThreshold:
 				terrain[y][x] = string(TerrainGrass)    // Wide plains surrounding waters
 				objects[y][x] = WorldObject{Type: "", Amount: 0, MaxAmount: 0}
-			case h < 0.78:
+			case h < s.forestThreshold:
 				terrain[y][x] = string(TerrainForest)   // Clustered woodlands adjacent to plains
 				// Wildbeeren wesentlich knapper verteilen!
 				if rng.Float64() < s.berriesDensity {
@@ -1361,17 +1391,17 @@ func main() {
 					// Underwater bed: map noise 0 to lakesDensity smoothly to height 5m to 19m
 					t := h / s.lakesDensity
 					heightVal = 5.0 + t*14.0
-				} else if h < 0.58 {
+				} else if h < s.grassThreshold {
 					// Grasslands: height 21m to 40m
-					t := (h - s.lakesDensity) / (0.58 - s.lakesDensity)
+					t := (h - s.lakesDensity) / (s.grassThreshold - s.lakesDensity)
 					heightVal = 21.0 + t*19.0
-				} else if h < 0.78 {
+				} else if h < s.forestThreshold {
 					// Forests: height 41m to 85m
-					t := (h - 0.58) / (0.78 - 0.58)
+					t := (h - s.grassThreshold) / (s.forestThreshold - s.grassThreshold)
 					heightVal = 41.0 + t*44.0
 				} else {
 					// Rocks/Mountain peaks: height 86m to 180m
-					t := (h - 0.78) / (1.0 - 0.78)
+					t := (h - s.forestThreshold) / (1.0 - s.forestThreshold)
 					heightVal = 86.0 + t*94.0
 				}
 
@@ -1423,12 +1453,12 @@ func main() {
 			h := (n1 * 0.7) + (n2 * 0.3)
 			if h < s.lakesDensity {
 				return 5.0 + (h/s.lakesDensity)*14.0
-			} else if h < 0.58 {
-				return 21.0 + ((h-s.lakesDensity)/(0.58-s.lakesDensity))*19.0
-			} else if h < 0.78 {
-				return 41.0 + ((h-0.58)/(0.78-0.58))*44.0
+			} else if h < s.grassThreshold {
+				return 21.0 + ((h-s.lakesDensity)/(s.grassThreshold-s.lakesDensity))*19.0
+			} else if h < s.forestThreshold {
+				return 41.0 + ((h-s.grassThreshold)/(s.forestThreshold-s.grassThreshold))*44.0
 			}
-			return 86.0 + ((h-0.78)/(1.0-0.78))*94.0
+			return 86.0 + ((h-s.forestThreshold)/(1.0-s.forestThreshold))*94.0
 		}
 
 		osAgents := make([]OpenSimAgent, len(s.agents))

@@ -53,6 +53,18 @@ else
 fi
 echo ""
 
+echo "Kubernetes Resources (Namespace: ia3-three)"
+if kubectl get ns ia3-three >/dev/null 2>&1; then
+  echo "  Pods:"
+  kubectl get pods -n ia3-three -o wide | sed 's/^/    /'
+  echo ""
+  echo "  Services:"
+  kubectl get svc -n ia3-three | sed 's/^/    /'
+else
+  echo "  Namespace 'ia3-three' does not exist."
+fi
+echo ""
+
 # 3. Check Port Forwards status
 echo "[3] Port Forward Status"
 if [ -f "$ROOT_DIR/scripts/prod/port-forward-status.sh" ]; then
@@ -68,7 +80,9 @@ for hostport in \
   "http://localhost:18080" \
   "http://localhost:13000" \
   "http://localhost:18081" \
-  "http://localhost:13001"; do
+  "http://localhost:13001" \
+  "http://localhost:18082" \
+  "http://localhost:13002"; do
   
   printf '  %-25s' "$hostport"
   if is_endpoint_healthy "$hostport/healthz"; then
@@ -85,7 +99,8 @@ echo ""
 echo "[5] Live State API Snapshots"
 for url in \
   "http://localhost:18080/api/state" \
-  "http://localhost:18081/api/state"; do
+  "http://localhost:18081/api/state" \
+  "http://localhost:18082/api/state"; do
   if curl -fsS "$url" >/tmp/ia3_prod_diag_body.$$ 2>/dev/null; then
     echo "  URL: $url"
     printf "    "

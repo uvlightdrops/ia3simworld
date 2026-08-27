@@ -40,6 +40,7 @@ echo ""
 echo "[2] Uninstalling Helm releases..."
 helm uninstall ia3-local -n ia3 || true
 helm uninstall ia3-two -n ia3-two || true
+helm uninstall ia3-three -n ia3-three || true
 echo ""
 
 echo "Kubernetes deployment stopped and cleaned up!"

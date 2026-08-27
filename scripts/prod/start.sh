@@ -66,6 +66,11 @@ helm upgrade --install ia3-local "$ROOT_DIR/deploy/helm/ia3-local" -n ia3 -f "$R
 echo "  - Deploying Instance 2 (Namespace: ia3-two)..."
 kubectl create namespace ia3-two --dry-run=client -o yaml | kubectl apply -f -
 helm upgrade --install ia3-two "$ROOT_DIR/deploy/helm/ia3-local" -n ia3-two -f "$ROOT_DIR/deploy/helm/ia3-local/values-local.yaml"
+
+# Deploy Instance 3 (Namespace: ia3-three)
+echo "  - Deploying Instance 3 (Namespace: ia3-three)..."
+kubectl create namespace ia3-three --dry-run=client -o yaml | kubectl apply -f -
+helm upgrade --install ia3-three "$ROOT_DIR/deploy/helm/ia3-local" -n ia3-three -f "$ROOT_DIR/deploy/helm/ia3-local/values-local.yaml"
 echo ""
 
 # 4. Wait for Pod Rollout to Complete
@@ -77,6 +82,10 @@ kubectl rollout status deployment/web-client -n ia3 --timeout=120s
 kubectl rollout status deployment/world-sim -n ia3-two --timeout=120s
 kubectl rollout status deployment/api-gateway -n ia3-two --timeout=120s
 kubectl rollout status deployment/web-client -n ia3-two --timeout=120s
+
+kubectl rollout status deployment/world-sim -n ia3-three --timeout=120s
+kubectl rollout status deployment/api-gateway -n ia3-three --timeout=120s
+kubectl rollout status deployment/web-client -n ia3-three --timeout=120s
 echo "All deployments are fully rolled out!"
 echo ""
 
@@ -110,6 +119,8 @@ for _ in $(seq 1 10); do
   if ! is_endpoint_healthy "http://localhost:13000"; then all_ok=false; fi
   if ! is_endpoint_healthy "http://localhost:18081/healthz"; then all_ok=false; fi
   if ! is_endpoint_healthy "http://localhost:13001"; then all_ok=false; fi
+  if ! is_endpoint_healthy "http://localhost:18082/healthz"; then all_ok=false; fi
+  if ! is_endpoint_healthy "http://localhost:13002"; then all_ok=false; fi
   if [ "$all_ok" = true ]; then
     break
   fi
@@ -124,5 +135,8 @@ echo "  - API State:   http://localhost:18080   -> $(if is_endpoint_healthy 'htt
 echo "Instance 2 (Namespace: ia3-two):"
 echo "  - Web UI:      http://localhost:13001   -> $(if is_endpoint_healthy 'http://localhost:13001'; then echo -e '\033[0;32mONLINE\033[0m'; else echo -e '\033[0;31mOFFLINE\033[0m'; fi)"
 echo "  - API State:   http://localhost:18081   -> $(if is_endpoint_healthy 'http://localhost:18081/healthz'; then echo -e '\033[0;32mHEALTHY\033[0m'; else echo -e '\033[0;31mOFFLINE\033[0m'; fi)"
+echo "Instance 3 (Namespace: ia3-three):"
+echo "  - Web UI:      http://localhost:13002   -> $(if is_endpoint_healthy 'http://localhost:13002'; then echo -e '\033[0;32mONLINE\033[0m'; else echo -e '\033[0;31mOFFLINE\033[0m'; fi)"
+echo "  - API State:   http://localhost:18082   -> $(if is_endpoint_healthy 'http://localhost:18082/healthz'; then echo -e '\033[0;32mHEALTHY\033[0m'; else echo -e '\033[0;31mOFFLINE\033[0m'; fi)"
 echo ""
 echo "Kubernetes deployment start-up complete!"

@@ -229,6 +229,16 @@ function InteractiveWorldMap({
     setOffsetY((dimensions.height - mapH * newZoom) / 2);
   };
 
+  const centerOnHuman = () => {
+    const human = state.agents.find((a) => a.id === "human-1");
+    if (!human) return;
+    const size = tileSize * zoom;
+    const newOffsetX = dimensions.width / 2 - (human.position.x + 0.5) * size;
+    const newOffsetY = dimensions.height / 2 - (human.position.y + 0.5) * size;
+    setOffsetX(newOffsetX);
+    setOffsetY(newOffsetY);
+  };
+
   const hasInitialized = useRef(false);
   useEffect(() => {
     if (state.worldSize.width > 0 && dimensions.width > 0) {
@@ -831,6 +841,9 @@ function InteractiveWorldMap({
           <button style={btnMiniStyle} onClick={() => setZoom((z) => Math.min(10, z * 1.25))} title="Zoom In">➕</button>
           <button style={btnMiniStyle} onClick={() => setZoom((z) => Math.max(0.1, z / 1.25))} title="Zoom Out">➖</button>
           <button style={btnMiniStyle} onClick={fitToScreen} title="Fit Map">🔍 Fit</button>
+          {state.agents.some((a) => a.id === "human-1") && (
+            <button style={btnMiniStyle} onClick={centerOnHuman} title="Center on Human Player">🎯 Center</button>
+          )}
         </div>
 
         <div
@@ -1408,7 +1421,7 @@ export default function Home() {
             <strong style={{ color: (connectedRemoteURL || hasReplicaNode) ? "#10b981" : "#38bdf8" }}>
               {ownNodeName === "ia3"
                 ? (hasReplicaNode ? "ia3, ia3-two" : "ia3")
-                : (connectedRemoteURL ? "ia3-two, ia3" : "ia3-two")
+                : ownNodeName
               }
             </strong>
           </div>
@@ -1430,7 +1443,7 @@ export default function Home() {
           </div>
           <div>
             <div style={headerLabel}>Image Version</div>
-            <strong style={{ color: "#38bdf8" }}>v1.0.70</strong>
+            <strong style={{ color: "#38bdf8" }}>v1.0.78</strong>
           </div>
         </div>
       </div>

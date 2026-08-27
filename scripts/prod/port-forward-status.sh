@@ -60,14 +60,29 @@ if is_port_listening 13001; then
   I2_WEB_PID=$(get_port_process 13001)
 fi
 
+# Check Instance 3 Ports (18082 & 13002)
+I3_API_ACTIVE=0
+I3_API_PID=""
+if is_port_listening 18082; then
+  I3_API_ACTIVE=1
+  I3_API_PID=$(get_port_process 18082)
+fi
+
+I3_WEB_ACTIVE=0
+I3_WEB_PID=""
+if is_port_listening 13002; then
+  I3_WEB_ACTIVE=1
+  I3_WEB_PID=$(get_port_process 13002)
+fi
+
 # Summary Status
 if [ $I1_API_ACTIVE -eq 1 ] && [ $I1_WEB_ACTIVE -eq 1 ]; then
-  if is_port_listening 18081 || is_port_listening 13001; then
+  if is_port_listening 18081 || is_port_listening 13001 || is_port_listening 18082 || is_port_listening 13002; then
     echo -e "\033[0;32m● STATUS: MULTIPLE INSTANCES ACTIVE\033[0m"
   else
     echo -e "\033[0;32m● STATUS: INSTANCE 1 ACTIVE\033[0m"
   fi
-elif [ $I1_API_ACTIVE -eq 1 ] || [ $I1_WEB_ACTIVE -eq 1 ] || [ $I2_API_ACTIVE -eq 1 ] || [ $I2_WEB_ACTIVE -eq 1 ]; then
+elif [ $I1_API_ACTIVE -eq 1 ] || [ $I1_WEB_ACTIVE -eq 1 ] || [ $I2_API_ACTIVE -eq 1 ] || [ $I2_WEB_ACTIVE -eq 1 ] || [ $I3_API_ACTIVE -eq 1 ] || [ $I3_WEB_ACTIVE -eq 1 ]; then
   echo -e "\033[0;33m● STATUS: PARTIALLY ACTIVE\033[0m"
 else
   echo -e "\033[0;31m● STATUS: INACTIVE\033[0m"
@@ -115,6 +130,27 @@ if [ $I2_WEB_ACTIVE -eq 1 ]; then
   echo "    URL: http://localhost:13001"
 else
   echo -e "  - \033[0;31mWeb Client  (Port 13001)\033[0m: INACTIVE"
+fi
+
+echo ""
+# Instance 3 Details
+echo "--- Instance 3 (Namespace: ia3-three) ---"
+if [ $I3_API_ACTIVE -eq 1 ]; then
+  pid_str=""
+  if [ ! -z "$I3_API_PID" ]; then pid_str=" (PID: $I3_API_PID)"; fi
+  echo -e "  - \033[0;32mAPI Gateway (Port 18082)\033[0m: ACTIVE$pid_str"
+  echo "    URL: http://localhost:18082/api/state"
+else
+  echo -e "  - \033[0;31mAPI Gateway (Port 18082)\033[0m: INACTIVE (Run 'make dev-up-three' to spin up)"
+fi
+
+if [ $I3_WEB_ACTIVE -eq 1 ]; then
+  pid_str=""
+  if [ ! -z "$I3_WEB_PID" ]; then pid_str=" (PID: $I3_WEB_PID)"; fi
+  echo -e "  - \033[0;32mWeb Client  (Port 13002)\033[0m: ACTIVE$pid_str"
+  echo "    URL: http://localhost:13002"
+else
+  echo -e "  - \033[0;31mWeb Client  (Port 13002)\033[0m: INACTIVE"
 fi
 
 echo ""
