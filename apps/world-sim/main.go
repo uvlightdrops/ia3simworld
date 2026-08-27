@@ -1780,6 +1780,154 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 		}
 	}
 
+	// --- Market Barter & Trade Exchange System (Wirtschafts-Refinement) ---
+	hour := currentTick % 24
+	if hour >= 6 && hour <= 11 { // Morning market hours
+		for i := range s.agents {
+			agent := &s.agents[i]
+			// Check if agent is on a market tile
+			if s.terrain[agent.Position.Y][agent.Position.X] == "market" {
+				for j := range s.agents {
+					if j <= i { // Prevents double checking same pair
+						continue
+					}
+					other := &s.agents[j]
+					// Check if other is on a market tile too and close to agent
+					if s.terrain[other.Position.Y][other.Position.X] == "market" && s.toroidalDistance(agent.Position, other.Position) <= 1.5 {
+						
+						// Chance-gate trading so they don't do it every single tick instantly, making it look organic
+						if rng.Float64() < 0.25 {
+							// 1. Resource for Energy Trade (Food for Stamina)
+							if agent.Resources < 45 && agent.Energy > 65 && other.Resources > 65 && other.Energy < 45 {
+								agent.Resources = clamp(agent.Resources+15, 0, 100)
+								agent.Energy = clamp(agent.Energy-15, 0, 100)
+								other.Resources = clamp(other.Resources-15, 0, 100)
+								other.Energy = clamp(other.Energy+15, 0, 100)
+								
+								agent.addHistory(fmt.Sprintf("🛒 [Markt] Erhielt 15 Nahrung gegen 15 Energie von %s", other.Name))
+								other.addHistory(fmt.Sprintf("🛒 [Markt] Erhielt 15 Energie gegen 15 Nahrung von %s", agent.Name))
+								s.addEvent(fmt.Sprintf("🛒 [Markt] %s gab %s 15 Nahrung im Tausch für 15 Energie!", other.Name, agent.Name))
+								continue // Max one trade per agent per tick
+							} else if other.Resources < 45 && other.Energy > 65 && agent.Resources > 65 && agent.Energy < 45 {
+								other.Resources = clamp(other.Resources+15, 0, 100)
+								other.Energy = clamp(other.Energy-15, 0, 100)
+								agent.Resources = clamp(agent.Resources-15, 0, 100)
+								agent.Energy = clamp(agent.Energy+15, 0, 100)
+								
+								other.addHistory(fmt.Sprintf("🛒 [Markt] Erhielt 15 Nahrung gegen 15 Energie von %s", agent.Name))
+								agent.addHistory(fmt.Sprintf("🛒 [Markt] Erhielt 15 Energie gegen 15 Nahrung von %s", other.Name))
+								s.addEvent(fmt.Sprintf("🛒 [Markt] %s gab %s 15 Nahrung im Tausch für 15 Energie!", agent.Name, other.Name))
+								continue
+							}
+
+							// 2. Resource for Wisdom / Intellectual Trade (Material for Knowledge)
+							if agent.Resources > 65 && other.Resources < 35 {
+								var tradeInterest string
+								for _, instB := range other.Interests {
+									if instB.Intensity > 65 {
+										foundLow := true
+										for _, instA := range agent.Interests {
+											if instA.Name == instB.Name && instA.Intensity >= 30 {
+												foundLow = false
+												break
+											}
+										}
+										if foundLow {
+											tradeInterest = instB.Name
+											break
+										}
+									}
+								}
+								if tradeInterest != "" {
+									agent.Resources = clamp(agent.Resources-15, 0, 100)
+									other.Resources = clamp(other.Resources+15, 0, 100)
+									
+									found := false
+									for idx := range agent.Interests {
+										if agent.Interests[idx].Name == tradeInterest {
+											agent.Interests[idx].Intensity = clamp(agent.Interests[idx].Intensity+20, 0, 100)
+											found = true
+											break
+										}
+									}
+									if !found {
+										agent.Interests = append(agent.Interests, Interest{Name: tradeInterest, Intensity: 20})
+									}
+									
+									agent.addHistory(fmt.Sprintf("🛒 [Markt] Kaufte Wissen über '%s' von %s für 15 Ressourcen", tradeInterest, other.Name))
+									other.addHistory(fmt.Sprintf("🛒 [Markt] Verkaufte Wissen über '%s' an %s für 15 Ressourcen", tradeInterest, agent.Name))
+									s.addEvent(fmt.Sprintf("🛒 [Markt] %s unterwies %s in '%s' im Tausch gegen 15 Nahrung!", other.Name, agent.Name, tradeInterest))
+									continue
+								}
+							} else if other.Resources > 65 && agent.Resources < 35 {
+								var tradeInterest string
+								for _, instA := range agent.Interests {
+									if instA.Intensity > 65 {
+										foundLow := true
+										for _, instB := range other.Interests {
+											if instB.Name == instA.Name && instB.Intensity >= 30 {
+												foundLow = false
+												break
+											}
+										}
+										if foundLow {
+											tradeInterest = instA.Name
+											break
+										}
+									}
+								}
+								if tradeInterest != "" {
+									other.Resources = clamp(other.Resources-15, 0, 100)
+									agent.Resources = clamp(agent.Resources+15, 0, 100)
+									
+									found := false
+									for idx := range other.Interests {
+										if other.Interests[idx].Name == tradeInterest {
+											other.Interests[idx].Intensity = clamp(other.Interests[idx].Intensity+20, 0, 100)
+											found = true
+											break
+										}
+									}
+									if !found {
+										other.Interests = append(other.Interests, Interest{Name: tradeInterest, Intensity: 20})
+									}
+									
+									other.addHistory(fmt.Sprintf("🛒 [Markt] Kaufte Wissen über '%s' von %s für 15 Ressourcen", tradeInterest, agent.Name))
+									agent.addHistory(fmt.Sprintf("🛒 [Markt] Verkaufte Wissen über '%s' an %s für 15 Ressourcen", tradeInterest, other.Name))
+									s.addEvent(fmt.Sprintf("🛒 [Markt] %s unterwies %s in '%s' im Tausch gegen 15 Nahrung!", agent.Name, other.Name, tradeInterest))
+									continue
+								}
+							}
+
+							// 3. Service / Waste Disposal Trade (Resources for Waste Cleaning)
+							if agent.Waste > 70 && agent.Resources > 50 && other.Waste < 30 && other.Resources < 40 {
+								agent.Waste = clamp(agent.Waste-20, 0, 100)
+								agent.Resources = clamp(agent.Resources-15, 0, 100)
+								other.Waste = clamp(other.Waste+20, 0, 100)
+								other.Resources = clamp(other.Resources+15, 0, 100)
+								
+								agent.addHistory(fmt.Sprintf("🛒 [Markt] Bezahlte %s mit 15 Nahrung für Müllentsorgung", other.Name))
+								other.addHistory(fmt.Sprintf("🛒 [Markt] Übernahm 20 Müll von %s für 15 Nahrung", agent.Name))
+								s.addEvent(fmt.Sprintf("🛒 [Markt] %s übernahm 20 Müll von %s im Tausch gegen 15 Nahrung!", other.Name, agent.Name))
+								continue
+							} else if other.Waste > 70 && other.Resources > 50 && agent.Waste < 30 && agent.Resources < 40 {
+								other.Waste = clamp(other.Waste-20, 0, 100)
+								other.Resources = clamp(other.Resources-15, 0, 100)
+								agent.Waste = clamp(agent.Waste+20, 0, 100)
+								agent.Resources = clamp(agent.Resources+15, 0, 100)
+								
+								other.addHistory(fmt.Sprintf("🛒 [Markt] Bezahlte %s mit 15 Nahrung für Müllentsorgung", agent.Name))
+								agent.addHistory(fmt.Sprintf("🛒 [Markt] Übernahm 20 Müll von %s für 15 Nahrung", other.Name))
+								s.addEvent(fmt.Sprintf("🛒 [Markt] %s übernahm 20 Müll von %s im Tausch gegen 15 Nahrung!", agent.Name, other.Name))
+								continue
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// 3. Call Python Mesa AgentBehaviorService over gRPC!
 	s.queryMesaAgentBehavior()
 

@@ -103,6 +103,31 @@ Um die Lebensechtheit und Dramatik der Simulation zu steigern, wurden Ressourcen
 
 ---
 
+## 6.1 Mercantile Barter & Trade Exchange System (Markt-Tauschhandel)
+
+Um das **Wirtschaftsleben** (Wirtschaftssphäre der sozialen Dreigliederung) lebendig und interaktiv zu gestalten, wurde eine dezentrale Handels- und Tauschbörse auf dem zentralen Marktplatz (`market`) implementiert. 
+
+Wenn Agenten morgens (**Ticks 6 bis 11**) auf oder neben Marktplatz-Kacheln zusammentreffen (Distanz <= 1.5), prüfen sie organisch ihre gegenseitigen Bedürfnisse und führen (mit einer Wahrscheinlichkeit von 25% pro Tick) einen der drei Tauschhandelstypen aus:
+
+### 1. Physischer Tauschhandel (Food for Stamina)
+- **Problem:** Ein Agent ist erschöpft (Energie < 45%), hat aber viel Nahrung (Ressourcen > 65%). Ein anderer Agent ist extrem fit (Energie > 65%), leidet aber Hunger (Ressourcen < 45%).
+- **Tausch:** Sie tauschen Arbeit gegen Nahrung. Der hungrige Agent erhält **+15 Ressourcen**, während der erschöpfte Agent **+15 Energie** (Unterstützung beim Tragen, Ausruhen) erhält.
+- **Log-Eintrag:** `"🛒 [Markt] Agent A gab Agent B 15 Nahrung im Tausch für 15 Energie!"`
+
+### 2. Kultureller Tauschhandel (Resources for Wisdom)
+- **Problem:** Ein materiell wohlhabender Agent (Ressourcen > 65%) besitzt kaum philosophische Interessen (alle Intensitäten < 30%). Ein armer Agent (Ressourcen < 35%) ist hochgebildet (mindestens ein Interesse > 65%).
+- **Tausch:** Sie tauschen geistige Lehre gegen Nahrung. Der wohlhabende Agent bezahlt **15 Ressourcen**. Im Gegenzug unterweist der gebildete Agent ihn, wodurch das entsprechende Interesse um **+20%** steigt oder neu gelernt wird.
+- **Log-Eintrag:** `"🛒 [Markt] Agent B unterwies Agent A in 'science' im Tausch gegen 15 Nahrung!"`
+
+### 3. Dienstleistungs-Tauschhandel (Resources for Waste Cleaning)
+- **Problem:** Ein fleißiger, reicher Agent hat seinen Mülleimer überfüllt (Müll > 70%, Ressourcen > 50%). Ein sauberer, armer Agent hat Platz für Müll (Müll < 30%, Ressourcen < 40%).
+- **Tausch:** Sie tauschen Entsorgungsdienstleistung gegen Nahrung. Der saubere Agent übernimmt **20 Einheiten Müll** in sein Inventar und erhält dafür **15 Ressourcen** als Bezahlung.
+- **Log-Eintrag:** `"🛒 [Markt] Agent B übernahm 20 Müll von Agent A im Tausch gegen 15 Nahrung!"`
+
+Dieser dynamische Marktplatzhandel simuliert echte wirtschaftliche Spezialisierung, Kooperation und gegenseitige Abhängigkeiten und sorgt für eine spürbare Stabilisierung der kollektiven Vitalwerte in Krisenzeiten.
+
+---
+
 ## 7. Fehlerbehebungen & KI-Erweiterungen (Social Dynamics)
 
 ### Interessen-Saturierungs-Bugfix
