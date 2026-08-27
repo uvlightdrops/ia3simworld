@@ -1,0 +1,72 @@
+syntax = "proto3";
+package sim.v1;
+
+option go_package = "./simv1";
+
+message Position {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message Interest {
+  string name = 1;
+  int32 intensity = 2;
+}
+
+message Agreement {
+  string partner_id = 1;
+  string type = 2;
+  int32 target_x = 3;
+  int32 target_y = 4;
+  int32 ticks_left = 5;
+}
+
+message AgentState {
+  string id = 1;
+  string name = 2;
+  string role = 3;
+  string mood = 4;
+  string status = 5;
+  int32 energy = 6;
+  Position position = 7;
+  Position target = 8;
+  repeated Interest interests = 9;
+  Agreement agreement = 10;
+  int32 resources = 11;
+  int32 waste = 12;
+}
+
+message TerrainTile {
+  int32 x = 1;
+  int32 y = 2;
+  string terrain_type = 3; // "grass", "water", "forest", "rock", "home"
+  string object_type = 4;  // "berries", "waste_pile", "homestead"
+  int32 object_amount = 5;
+}
+
+message DecideActionsRequest {
+  uint64 tick = 1;
+  int32 world_width = 2;
+  int32 world_height = 3;
+  repeated AgentState agents = 4;
+  repeated TerrainTile terrain_tiles = 5;
+}
+
+message AgentDecision {
+  string agent_id = 1;
+  Position target = 2;
+  string status = 3;
+  string mood = 4;
+  int32 energy = 5;
+  int32 resources = 6;
+  int32 waste = 7;
+  Agreement agreement = 8;
+}
+
+message DecideActionsResponse {
+  repeated AgentDecision decisions = 1;
+}
+
+service AgentDecisionService {
+  rpc DecideActions(DecideActionsRequest) returns (DecideActionsResponse);
+}

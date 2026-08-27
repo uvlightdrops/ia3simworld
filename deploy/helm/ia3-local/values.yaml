@@ -1,0 +1,15 @@
+postgresql:
+  auth:
+    username: ia3
+    password: ia3pass
+    database: ia3db
+
+redis:
+  auth:
+    enabled: false
+
+images:
+  apiGateway: api-gateway:dev
+  worldSim: world-sim:dev
+  agentService: agent-service:dev
+  webClient: web-client:dev

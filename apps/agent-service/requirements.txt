@@ -1,0 +1,5 @@
+grpcio==1.65.5
+grpcio-tools==1.65.5
+mesa
+networkx
+

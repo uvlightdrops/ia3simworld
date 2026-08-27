@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "world.tick.completed",
+  "type": "object",
+  "required": ["event_id", "tick", "unix_ms", "agent_count"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "unix_ms": { "type": "integer" },
+    "agent_count": { "type": "integer", "minimum": 0 }
+  }
+}

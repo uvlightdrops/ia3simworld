@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent.action.applied",
+  "type": "object",
+  "required": ["event_id", "tick", "agent_id", "action_type"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "agent_id": { "type": "string" },
+    "action_type": { "type": "string" },
+    "target_id": { "type": "string" }
+  }
+}

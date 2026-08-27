@@ -1,0 +1,112 @@
+{{- $ns := .Release.Namespace -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: world-sim }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: world-sim } }
+  template:
+    metadata: { labels: { app: world-sim } }
+    spec:
+      containers:
+        - name: world-sim
+          image: {{ .Values.images.worldSim }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: AGENT_GRPC_ADDR, value: "agent-service:50051" }
+            - { name: NATS_URL, value: "nats://nats:4222" }
+          ports:
+            - { containerPort: 8081 }
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: world-sim }
+spec:
+  selector: { app: world-sim }
+  ports:
+    - { port: 8081, targetPort: 8081 }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: agent-service }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: agent-service } }
+  template:
+    metadata: { labels: { app: agent-service } }
+    spec:
+      containers:
+        - name: agent-service
+          image: {{ .Values.images.agentService }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { containerPort: 50051 }
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: agent-service }
+spec:
+  selector: { app: agent-service }
+  ports:
+    - { port: 50051, targetPort: 50051 }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api-gateway }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: api-gateway } }
+  template:
+    metadata: { labels: { app: api-gateway } }
+    spec:
+      containers:
+        - name: api-gateway
+          image: {{ .Values.images.apiGateway }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: WORLD_SIM_URL, value: "http://world-sim:8081" }
+            - { name: PORT, value: "8080" }
+          ports:
+            - { containerPort: 8080 }
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api-gateway }
+spec:
+  selector: { app: api-gateway }
+  ports:
+    - { port: 8080, targetPort: 8080 }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web-client }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: web-client } }
+  template:
+    metadata: { labels: { app: web-client } }
+    spec:
+      containers:
+        - name: web-client
+          image: {{ .Values.images.webClient }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: NEXT_PUBLIC_API_BASE, value: "http://api-gateway:8080" }
+          ports:
+            - { containerPort: 3000 }
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web-client }
+spec:
+  selector: { app: web-client }
+  ports:
+    - { port: 3000, targetPort: 3000 }
