@@ -132,7 +132,7 @@ function InteractiveWorldMap({
   const [offsetY, setOffsetY] = useState(0);
 
   const [showGrid, setShowGrid] = useState(false);
-  const [showPaths, setShowPaths] = useState(true);
+  const [showPaths, setShowPaths] = useState(false);
   const [showResources, setShowResources] = useState(true);
   const [showAgentNames, setShowAgentNames] = useState(true);
   const [showSmoothAnim, setShowSmoothAnim] = useState(true);
@@ -815,6 +815,7 @@ function InteractiveWorldMap({
 export default function Home() {
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedAdminAgent, setSelectedAdminAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "recht" | "geist" | "wirtschaft" | "admin">("map");
   const [settings, setSettings] = useState({ riverWidth: 4, lakesDensity: 0.20, berriesDensity: 0.20, tickRateMs: 2000 });
   const [remoteURL, setRemoteURL] = useState("");
@@ -1244,36 +1245,12 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div style={{ borderTop: "1px solid #334155", paddingTop: 8, textAlign: "center" }}>
-                      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>⌨️ Press WASD / Arrows or click map to move!</div>
-                      <div style={{ display: "inline-grid", gridTemplateColumns: "repeat(3, 40px)", gap: 4, justifyContent: "center" }}>
-                        <div />
-                        <button 
-                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "up" }) }).then(() => refresh())}
-                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
-                        >
-                          ▲
-                        </button>
-                        <div />
-
-                        <button 
-                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "left" }) }).then(() => refresh())}
-                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
-                        >
-                          ◀
-                        </button>
-                        <button 
-                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "down" }) }).then(() => refresh())}
-                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
-                        >
-                          ▼
-                        </button>
-                        <button 
-                          onClick={() => fetch(`${API}/api/control/move-human`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction: "right" }) }).then(() => refresh())}
-                          style={{ background: "#334155", border: "1px solid #475569", borderRadius: 4, color: "#fff", cursor: "pointer", height: 32 }}
-                        >
-                          ▶
-                        </button>
+                    <div 
+                      style={{ borderTop: "1px solid #334155", paddingTop: 10, textAlign: "center", position: "relative" }}
+                      title="Steuerung: Nutze die Tasten W, A, S, D oder die Pfeiltasten auf deiner Tastatur während du dich auf der Weltkarte befindest. Alternativ kannst du direkt auf ein Feld der Weltkarte klicken, um dorthin zu reisen!"
+                    >
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#1e1b4b", border: "1px solid #4338ca", borderRadius: 16, padding: "6px 14px", fontSize: 11, cursor: "help", color: "#818cf8" }}>
+                        🎮 <b>Move: keyboard WASD/Arrows</b> (Hover for Help)
                       </div>
                     </div>
                   </div>
@@ -1383,39 +1360,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Territorial Laws & Policies Panel */}
-            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
-              <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>⚖️ Tribunal Territory Laws</span>
-                <span style={{ fontSize: 10, background: "#334155", padding: "2px 6px", borderRadius: 10, color: "#94a3b8" }}>Weekly Negotiation</span>
-              </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "6px 10px", borderRadius: 6 }}>
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Grassland Usage:</span>
-                  <span style={{ fontSize: 12, fontWeight: "bold", color: state.grassPolicy === "protected" ? "#ef4444" : "#10b981" }}>
-                    {state.grassPolicy === "protected" ? "🚫🌾 Protected" : "🌾 Agriculture"}
-                  </span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "6px 10px", borderRadius: 6 }}>
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Forest Usage:</span>
-                  <span style={{ fontSize: 12, fontWeight: "bold", color: state.forestPolicy === "timber" ? "#f59e0b" : "#10b981" }}>
-                    {state.forestPolicy === "timber" ? "🪓 Timber logging" : "🍓 Berries harvest"}
-                  </span>
-                </div>
-                {state.activeLaws && state.activeLaws.length > 0 && (
-                  <div style={{ marginTop: 8, borderTop: "1px solid #334155", paddingTop: 8 }}>
-                    <span style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 4 }}>📜 Passed AI Legislation:</span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {state.activeLaws.map((law, idx) => (
-                        <div key={idx} style={{ fontSize: 11, background: "#1e1b4b", color: "#a5b4fc", border: "1px solid #4338ca", padding: "4px 8px", borderRadius: 4 }}>
-                          🔹 {law}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Territorial Laws & Policies Panel moved to Rechtssphäre tab */}
 
             {/* 2. Selected Agent Detail Card */}
             {selectedAgent ? (() => {
@@ -1547,6 +1492,41 @@ export default function Home() {
       {/* THREEFOLD SPHERE DASHBOARD: RECHTSSPHÄRE */}
       {activeTab === "recht" && (
         <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+          
+          {/* Tribunal Territory Laws Box (Moved from Frontpage Sidebar) */}
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <h3 style={{ margin: "0 0 12px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 16 }}>⚖️ Tribunal Territory Laws Summary</span>
+              <span style={{ fontSize: 11, background: "#334155", padding: "2px 8px", borderRadius: 10, color: "#94a3b8" }}>Weekly Negotiation (120 Ticks)</span>
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "12px 16px", borderRadius: 8, border: "1px solid #334155" }}>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>Grassland Usage:</span>
+                <span style={{ fontSize: 14, fontWeight: "bold", color: state.grassPolicy === "protected" ? "#ef4444" : "#10b981" }}>
+                  {state.grassPolicy === "protected" ? "🚫🌾 Protected" : "🌾 Agriculture"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "12px 16px", borderRadius: 8, border: "1px solid #334155" }}>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>Forest Usage:</span>
+                <span style={{ fontSize: 14, fontWeight: "bold", color: state.forestPolicy === "timber" ? "#f59e0b" : "#10b981" }}>
+                  {state.forestPolicy === "timber" ? "🪓 Timber logging" : "🍓 Berries harvest"}
+                </span>
+              </div>
+            </div>
+            {state.activeLaws && state.activeLaws.length > 0 && (
+              <div style={{ marginTop: 14, borderTop: "1px solid #334155", paddingTop: 12 }}>
+                <span style={{ fontSize: 12, color: "#94a3b8", display: "block", marginBottom: 6 }}>📜 Active System-wide AI Legislation:</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {state.activeLaws.map((law, idx) => (
+                    <div key={idx} style={{ fontSize: 12, background: "#1e1b4b", color: "#a5b4fc", border: "1px solid #4338ca", padding: "6px 12px", borderRadius: 6 }}>
+                      🔹 {law}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, paddingBottom: 16 }}>
             
             {/* Left Panel: Active Policies & Courtroom Stance */}
@@ -2110,6 +2090,148 @@ export default function Home() {
             </div>
 
           </div>
+
+          {/* AGENT ADMINISTRATION, PROFILES & CHRONICLE HISTORY */}
+          <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155", marginTop: 24 }}>
+            <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              👤 Agent Administration & Profiles
+            </h3>
+            <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#94a3b8" }}>
+              Oversee and monitor all active agents. Click an agent to view their deep profile stats, intellectual interest profiles, and complete chronological action histories.
+            </p>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 24 }}>
+              
+              {/* Agent List (Left column) */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "#0f172a", padding: 12, borderRadius: 8, maxHeight: 420, overflowY: "auto", border: "1px solid #334155" }}>
+                {state.agents && state.agents.length > 0 ? (
+                  state.agents.map((agent) => {
+                    const c = agentColors[agent.name] ?? "#3b82f6";
+                    const isSel = selectedAdminAgent === agent.id;
+                    return (
+                      <div 
+                        key={agent.id} 
+                        onClick={() => setSelectedAdminAgent(agent.id)}
+                        style={{ 
+                          background: isSel ? "#1e293b" : "#1a2333", 
+                          border: isSel ? `1px solid ${c}` : "1px solid #334155", 
+                          borderRadius: 6, 
+                          padding: "10px 12px", 
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                          borderLeft: `4px solid ${c}`
+                        }}
+                      >
+                        <div style={{ fontWeight: "bold", fontSize: 13, color: "#f8fafc", display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span>{agent.name}</span>
+                          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: "normal" }}>{agent.role}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#cbd5e1" }}>
+                          <span>Mood: <b style={{ color: "#cbd5e1" }}>{agent.mood}</b></span>
+                          <span>E: <b style={{ color: "#10b981" }}>{agent.energy}%</b></span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", padding: 20 }}>No agents loaded.</div>
+                )}
+              </div>
+
+              {/* Selected Agent Details (Right column) */}
+              <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 18, minHeight: 380, display: "flex", flexDirection: "column" }}>
+                {(() => {
+                  const agent = state.agents.find(a => a.id === (selectedAdminAgent || state.agents[0]?.id));
+                  if (!agent) {
+                    return (
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontStyle: "italic" }}>
+                        Select an agent from the left menu to view their profile.
+                      </div>
+                    );
+                  }
+                  const c = agentColors[agent.name] ?? "#3b82f6";
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, height: "100%" }}>
+                      
+                      {/* Top profile bar */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: 10 }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: 18, color: "#f8fafc" }}>
+                            {agent.name} <span style={{ fontSize: 12, fontWeight: "normal", color: "#94a3b8", background: "#1e293b", padding: "2px 8px", borderRadius: 10, marginLeft: 6 }}>{agent.id}</span>
+                          </h4>
+                          <span style={{ fontSize: 12, color: c, fontWeight: "bold" }}>{agent.role} &bull; Mood: {agent.mood}</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 12, color: "#cbd5e1" }}>Current Action:</span>
+                          <div style={{ fontSize: 13, fontWeight: "bold", color: "#eab308" }}>{agent.status}</div>
+                        </div>
+                      </div>
+
+                      {/* Stats grid */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                        <div style={{ background: "#1e293b", padding: 10, borderRadius: 6, border: "1px solid #334155", textAlign: "center" }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8" }}>⚡ Vital Energy</span>
+                          <div style={{ fontSize: 16, fontWeight: "bold", color: "#10b981", marginTop: 4 }}>{agent.energy}%</div>
+                        </div>
+                        <div style={{ background: "#1e293b", padding: 10, borderRadius: 6, border: "1px solid #334155", textAlign: "center" }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8" }}>🌾 Resources (Futter)</span>
+                          <div style={{ fontSize: 16, fontWeight: "bold", color: "#38bdf8", marginTop: 4 }}>{agent.resources}%</div>
+                        </div>
+                        <div style={{ background: "#1e293b", padding: 10, borderRadius: 6, border: "1px solid #334155", textAlign: "center" }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8" }}>💩 Accumulated Waste</span>
+                          <div style={{ fontSize: 16, fontWeight: "bold", color: "#f59e0b", marginTop: 4 }}>{agent.waste}%</div>
+                        </div>
+                      </div>
+
+                      {/* Split details (Interests & History) */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, flex: 1, minHeight: 220 }}>
+                        {/* Interests Panel */}
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <h5 style={{ margin: "0 0 6px 0", fontSize: 12, color: "#94a3b8" }}>📖 Intellectual Interests Intensity:</h5>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
+                            {agent.interests && agent.interests.length > 0 ? (
+                              agent.interests.map((interest) => (
+                                <div key={interest.name} style={{ background: "#1e293b", border: "1px solid #334155", padding: "6px 10px", borderRadius: 6 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                                    <span style={{ color: "#cbd5e1" }}>{interest.name}</span>
+                                    <b style={{ color: "#fff" }}>{interest.intensity}%</b>
+                                  </div>
+                                  <div style={{ background: "#0f172a", height: 4, borderRadius: 2, overflow: "hidden" }}>
+                                    <div style={{ background: c, width: `${interest.intensity}%`, height: "100%" }} />
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ color: "#64748b", fontStyle: "italic", fontSize: 11 }}>No interests recorded yet.</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* History Panel */}
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <h5 style={{ margin: "0 0 6px 0", fontSize: 12, color: "#94a3b8" }}>📜 Chronicle History & Actions Logs:</h5>
+                          <div style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: 8, maxHeight: 180, overflowY: "auto", fontSize: 11 }}>
+                            {agent.history && agent.history.length > 0 ? (
+                              agent.history.map((log, idx) => (
+                                <div key={idx} style={{ paddingBottom: 4, borderBottom: "1px solid #1e293b", color: "#cbd5e1", marginBottom: 4 }}>
+                                  • {log}
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", marginTop: 30 }}>No chronicle events recorded yet.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })()}
+              </div>
+
+            </div>
+          </div>
+
         </div>
       )}
 
