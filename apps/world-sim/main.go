@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -81,6 +84,21 @@ type Agent struct {
 	History               []string   `json:"history"`
 	HomePosition          Position   `json:"homePosition"`
 	ExploredSectors       []string   `json:"exploredSectors"`
+	Signature             string     `json:"signature,omitempty"`
+}
+
+func (s *Sim) calculateAgentSignature(agent *Agent) string {
+	secret := getenv("HMAC_SECRET", "ia3-simworld-secret-seal-key")
+	canonical := fmt.Sprintf("%s:%s:%s:%d:%d:%d:%d:%d", 
+		agent.ID, agent.Name, agent.Role, agent.Energy, agent.Resources, agent.Waste, agent.MissionsCompleted, agent.SocializedCount)
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(canonical))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (s *Sim) verifyAgentSignature(agent *Agent) bool {
+	expected := s.calculateAgentSignature(agent)
+	return hmac.Equal([]byte(agent.Signature), []byte(expected))
 }
 
 func (a *Agent) addHistory(entry string) {
@@ -1239,6 +1257,48 @@ func main() {
 		var handedOverAgent Agent
 		if err := json.NewDecoder(r.Body).Decode(&handedOverAgent); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// 1. Signature Verification (Anti-Cheat / Forgery Prevention)
+		if !s.verifyAgentSignature(&handedOverAgent) {
+			s.addEvent(fmt.Sprintf("🚨 [Sicherheit] Handover von %s abgelehnt: UNGÜLTIGE SIGNATUR (Manipulationsversuch!)", handedOverAgent.Name))
+			http.Error(w, "Invalid security signature", http.StatusForbidden)
+			return
+		}
+
+		// 2. Vital Invariants Range Verification (Value Range Checking)
+		if handedOverAgent.Energy < 0 || handedOverAgent.Energy > 100 ||
+			handedOverAgent.Resources < 0 || handedOverAgent.Resources > 100 ||
+			handedOverAgent.Waste < 0 || handedOverAgent.Waste > 100 {
+			s.addEvent(fmt.Sprintf("🚨 [Sicherheit] Handover von %s abgelehnt: Ungültige Vitalwerte (Energie: %d, Ressourcen: %d, Müll: %d)", handedOverAgent.Name, handedOverAgent.Energy, handedOverAgent.Resources, handedOverAgent.Waste))
+			http.Error(w, "Invalid vital ranges", http.StatusBadRequest)
+			return
+		}
+
+		// 3. Boundary & Velocity Verification (Teleportation Prevention)
+		nodeName := getenv("NODE_NAME", "ia3")
+		if nodeName == "" {
+			nodeName = "ia3"
+		}
+		validBoundary := false
+		if nodeName == "ia3" {
+			if handedOverAgent.Position.X >= 240 || handedOverAgent.Position.Y >= 240 || handedOverAgent.Position.X <= 15 || handedOverAgent.Position.Y <= 15 {
+				validBoundary = true
+			}
+		} else if nodeName == "ia3-two" {
+			if handedOverAgent.Position.X <= 15 {
+				validBoundary = true
+			}
+		} else if nodeName == "ia3-three" {
+			if handedOverAgent.Position.Y <= 15 {
+				validBoundary = true
+			}
+		}
+
+		if !validBoundary {
+			s.addEvent(fmt.Sprintf("🚨 [Sicherheit] Handover von %s abgelehnt: Ungültige Sektor-Eintrittskoordinaten (Position: %d, %d)", handedOverAgent.Name, handedOverAgent.Position.X, handedOverAgent.Position.Y))
+			http.Error(w, "Invalid boundary crossing", http.StatusBadRequest)
 			return
 		}
 
@@ -2672,6 +2732,9 @@ func (s *Sim) processFederatedShardingHandover() {
 		} else if targetNode == "ia3" && nodeName == "ia3-three" {
 			targetAgent.Position.Y = 250
 		}
+
+		// Cryptographic State Proof (HMAC Seal)
+		targetAgent.Signature = s.calculateAgentSignature(&targetAgent)
 
 		urls := []string{}
 		if targetNode == "ia3" {
