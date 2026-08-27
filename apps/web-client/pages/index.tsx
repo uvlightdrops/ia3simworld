@@ -793,6 +793,8 @@ export default function Home() {
   const [settings, setSettings] = useState({ riverWidth: 2, lakesDensity: 0.20, berriesDensity: 0.20 });
   const [remoteURL, setRemoteURL] = useState("");
   const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
+  const [hasReplicaNode, setHasReplicaNode] = useState(false);
+  const [ownNodeName, setOwnNodeName] = useState("ia3");
 
   async function refresh() {
     try {
@@ -894,6 +896,21 @@ export default function Home() {
     refresh();
     fetchSettings();
     fetchMultiplayer();
+
+    if (typeof window !== "undefined") {
+      if (window.location.port === "13001") {
+        setOwnNodeName("ia3-two");
+      } else {
+        setOwnNodeName("ia3");
+      }
+    }
+
+    // Check if second instance is active (for Primary on port 13000)
+    if (typeof window !== "undefined" && window.location.port === "13000") {
+      fetch("http://localhost:18081/healthz")
+        .then(res => setHasReplicaNode(res.ok))
+        .catch(() => setHasReplicaNode(false));
+    }
 
     // Establish WebSocket connection with robust polling fallback
     const wsUrl = API.replace(/^http/, "ws") + "/api/ws";
@@ -1042,8 +1059,11 @@ export default function Home() {
           </div>
           <div>
             <div style={headerLabel}>Game Nodes</div>
-            <strong style={{ color: connectedRemoteURL ? "#10b981" : "#38bdf8" }}>
-              {connectedRemoteURL ? "2 (ia3, ia3-two)" : "1 (ia3)"}
+            <strong style={{ color: (connectedRemoteURL || hasReplicaNode) ? "#10b981" : "#38bdf8" }}>
+              {ownNodeName === "ia3"
+                ? (hasReplicaNode ? "ia3, ia3-two" : "ia3")
+                : (connectedRemoteURL ? "ia3-two, ia3" : "ia3-two")
+              }
             </strong>
           </div>
           <div>
