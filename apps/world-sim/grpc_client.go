@@ -25,7 +25,15 @@ func (s *Sim) queryMesaAgentBehavior() {
 	defer cancel()
 
 	grpcAddr := getenv("AGENT_GRPC_ADDR", "localhost:50051")
-	conn, err := grpc.DialContext(ctx, grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	// Increase max message size to 64MB to handle full world terrain data
+	conn, err := grpc.DialContext(ctx, grpcAddr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()), 
+		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64*1024*1024), // 64 MB receive
+			grpc.MaxCallSendMsgSize(64*1024*1024), // 64 MB send
+		),
+	)
 	if err != nil {
 		log.Printf("Warning: Failed to connect to Python agent-service on %s (Mesa bypassed): %v", grpcAddr, err)
 		return
@@ -74,9 +82,49 @@ func (s *Sim) queryMesaAgentBehavior() {
 		})
 	}
 
+	// ── Phase 2: Viewport-Based Terrain Filtering ──────────────────────────
+	// Only send terrain tiles within agent vision/influence radius
+	// This reduces message size from 58MB to ~5-10MB
+	
 	var pbTiles []*pb.TerrainTile
-	for y := 0; y < s.worldHeight; y++ {
-		for x := 0; x < s.worldWidth; x++ {
+	
+	// Calculate bounding box from agent positions (with margin for context)
+	const terrainMargin = 100 // Include tiles 100 cells beyond agents
+	minX, maxX := s.worldWidth, -1
+	minY, maxY := s.worldHeight, -1
+	
+	for _, a := range s.agents {
+		if a.Position.X-terrainMargin < minX {
+			minX = a.Position.X - terrainMargin
+		}
+		if a.Position.X+terrainMargin > maxX {
+			maxX = a.Position.X + terrainMargin
+		}
+		if a.Position.Y-terrainMargin < minY {
+			minY = a.Position.Y - terrainMargin
+		}
+		if a.Position.Y+terrainMargin > maxY {
+			maxY = a.Position.Y + terrainMargin
+		}
+	}
+	
+	// Clamp to world bounds
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX >= s.worldWidth {
+		maxX = s.worldWidth - 1
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY >= s.worldHeight {
+		maxY = s.worldHeight - 1
+	}
+	
+	// Collect tiles in viewport
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
 			t := s.terrain[y][x]
 			obj := s.objects[y][x]
 			if t == string(TerrainWater) || t == string(TerrainForest) || t == string(TerrainRock) || t == string(TerrainHome) || t == string(TerrainRoad) || t == string(TerrainCourt) || t == string(TerrainMarket) || t == string(TerrainCrops) || t == string(TerrainWorkshop) || t == string(TerrainMill) || t == string(TerrainQuarry) || t == string(TerrainForge) || t == string(TerrainPottery) || t == string(TerrainStorehouse) {
