@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import typer
+from typer._click.exceptions import UsageError
 
 from .nodes import parse_nodes
 from .ports import local_ports, mk_ports
@@ -612,6 +613,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except typer.Exit as exc:
         return int(exc.exit_code or 0)
+    except UsageError as exc:
+        # Handle Typer/Click usage errors (no command, missing args, etc.)
+        error_msg = str(exc)
+        if "Missing command" in error_msg:
+            typer.echo("Error: Missing command. See available commands below:\n", err=True)
+            typer.echo("Run: ia3ctl --help", err=True)
+            return 2
+        typer.echo(f"Error: {error_msg}", err=True)
+        typer.echo("\nRun: ia3ctl --help", err=True)
+        return 2
     except ValueError as exc:
         # Handle validation errors (e.g., invalid node list)
         typer.echo(f"Error: {exc}", err=True)
