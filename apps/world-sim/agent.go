@@ -26,15 +26,29 @@ func (s *Sim) seedAgents() {
 		{{"safety", 90}, {"exploration", 70}},
 	}
 
-	centerX := s.worldWidth / 2
-	centerY := s.worldHeight / 2
+	// Spawn agents at settlement homesteads (round-robin distribution)
+	// If no settlements exist yet, fall back to world center
+	var spawnCenters []Position
+	if len(s.settlementCenters) > 0 {
+		spawnCenters = s.settlementCenters
+	} else {
+		// Fallback: create fallback centers if settlements not yet generated
+		centerX := s.worldWidth / 2
+		centerY := s.worldHeight / 2
+		spawnCenters = []Position{{X: centerX, Y: centerY}}
+	}
 
 	for i, name := range names {
+		// Select homestead round-robin
+		homesteadIdx := i % len(spawnCenters)
+		homestead := spawnCenters[homesteadIdx]
+
 		var position Position
 		found := false
-		for attempts := 0; attempts < 100; attempts++ {
-			x := wrap(centerX-12+(i%4)*6+(attempts%5), s.worldWidth)
-			y := wrap(centerY-12+(i/4)*6+(attempts/5), s.worldHeight)
+		// Search around the homestead center
+		for attempts := 0; attempts < 50; attempts++ {
+			x := wrap(homestead.X-8+(attempts%5)*3, s.worldWidth)
+			y := wrap(homestead.Y-8+(attempts/5)*3, s.worldHeight)
 			terrain := s.terrain[y][x]
 			if terrain != string(TerrainWater) && terrain != string(TerrainRock) {
 				position = Position{X: x, Y: y}
@@ -43,12 +57,12 @@ func (s *Sim) seedAgents() {
 			}
 		}
 		if !found {
-			position = Position{X: centerX, Y: centerY}
+			position = homestead
 		}
 
 		var target Position
 		foundTarget := false
-		for attempts := 0; attempts < 100; attempts++ {
+		for attempts := 0; attempts < 50; attempts++ {
 			tx := wrap(position.X+(i*7+3+attempts)%30-15, s.worldWidth)
 			ty := wrap(position.Y+(i*5+4+attempts)%30-15, s.worldHeight)
 			terrain := s.terrain[ty][tx]

@@ -400,6 +400,9 @@ type Sim struct {
 	sectorClaims    map[Position]SectorClaim
 	sectorClaimsMu  sync.RWMutex
 
+	// Settlement Centers: populated during terrain generation for agent homestead spawning
+	settlementCenters []Position
+
 	// State Serialization Cache (prevents allocating millions on each poll)
 	cachedTerrain      [][]string
 	cachedObjects      [][]WorldObject

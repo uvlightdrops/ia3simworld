@@ -400,6 +400,7 @@ func (s *Sim) generateTerrain() {
 	s.interactionMu.Lock()
 	s.terrain = terrain
 	s.objects = objects
+	s.settlementCenters = settlementCenters
 	s.createdAt = time.Now().UTC()
 	s.interactionMu.Unlock()
 }
