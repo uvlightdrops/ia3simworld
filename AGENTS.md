@@ -92,6 +92,19 @@ The primary orchestration tool is **`ia3ctl`**, a Python-based CLI using Typer. 
 pip3 install typer
 ```
 
+#### Create `ia3ctl` command (one-time)
+
+Create a symlink so `ia3ctl` is available system-wide:
+
+```bash
+mkdir -p ~/.local/bin
+chmod +x scripts/ia3ctl.py
+ln -sf "$(pwd)/scripts/ia3ctl.py" ~/.local/bin/ia3ctl
+
+# Verify it works
+ia3ctl --help
+```
+
 #### Install Shell Completion (optional but recommended)
 
 For **bash**, add to `~/.bashrc`:

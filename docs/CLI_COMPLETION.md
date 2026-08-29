@@ -2,6 +2,22 @@
 
 The `ia3ctl` CLI supports shell autocompletion for all shells supported by Typer: **bash**, **zsh**, **fish**, and **PowerShell**.
 
+## Setup
+
+First, ensure `ia3ctl` is installed and in your PATH:
+
+```bash
+# Create symlink in ~/.local/bin (if not already done)
+mkdir -p ~/.local/bin
+chmod +x ~/dev_flow/ia3simworld/scripts/ia3ctl.py
+ln -sf ~/dev_flow/ia3simworld/scripts/ia3ctl.py ~/.local/bin/ia3ctl
+
+# Verify it works
+ia3ctl --help
+```
+
+Then proceed with shell-specific completion setup below.
+
 ## Quick Install
 
 ### Bash
