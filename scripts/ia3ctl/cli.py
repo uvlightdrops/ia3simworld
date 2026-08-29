@@ -612,3 +612,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except typer.Exit as exc:
         return int(exc.exit_code or 0)
+    except ValueError as exc:
+        # Handle validation errors (e.g., invalid node list)
+        typer.echo(f"Error: {exc}", err=True)
+        typer.echo("\nRun: ia3ctl --help", err=True)
+        return 2
+    except Exception as exc:
+        # Catch common Click/Typer errors and show help instead of traceback
+        error_msg = str(exc)
+        
+        # Check for common error patterns
+        if "No such option" in error_msg or "no such option" in error_msg:
+            typer.echo(f"Error: {error_msg}", err=True)
+            typer.echo("\nRun: ia3ctl --help", err=True)
+            return 2
+        elif "no such command" in error_msg.lower():
+            typer.echo(f"Error: {error_msg}", err=True)
+            typer.echo("\nRun: ia3ctl --help", err=True)
+            return 2
+        elif "Missing argument" in error_msg or "missing argument" in error_msg.lower():
+            typer.echo(f"Error: {error_msg}", err=True)
+            typer.echo("\nRun: ia3ctl --help", err=True)
+            return 2
+        else:
+            # For unexpected errors, still show traceback
+            import traceback
+            traceback.print_exc()
+            return 1
+
