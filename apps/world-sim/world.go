@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -111,34 +112,57 @@ func (s *Sim) generateTerrain() {
 	if updateInterval < 1 {
 		updateInterval = 1
 	}
-	for y := 0; y < s.worldHeight; y++ {
-		if y%updateInterval == 0 {
-			s.genProgress.Store(int32(2 + (y*18)/s.worldHeight))
-		}
-		absY := float64(sectorOffsetY + y)
-		for x := 0; x < s.worldWidth; x++ {
-			absX := float64(sectorOffsetX + x)
-			n1 := noise2D(absX, absY)
-			n2 := noise2D(absX*2.7, absY*2.7)
-			n3 := noise2D(absX*5.5, absY*5.5)
-			h := n1*0.58 + n2*0.28 + n3*0.14
-			switch {
-			case h < lakesDensity:
-				terrain[y][x] = string(TerrainWater)
-			case h < grassThreshold:
-				terrain[y][x] = string(TerrainGrass)
-			case h < forestThreshold:
-				terrain[y][x] = string(TerrainForest)
-				berryVal := hash2D(int64(absX)+9999, int64(absY)+8888)
-				if berryVal < berriesDensity {
-					objects[y][x] = WorldObject{Type: "berries", Amount: 100, MaxAmount: 100}
+	
+	// Parallelize terrain generation across rows
+	var wg sync.WaitGroup
+	numWorkers := 4 // Use 4 goroutines for parallel terrain generation
+	rowChan := make(chan int, numWorkers*2)
+	
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for y := range rowChan {
+				absY := float64(sectorOffsetY + y)
+				for x := 0; x < s.worldWidth; x++ {
+					absX := float64(sectorOffsetX + x)
+					n1 := noise2D(absX, absY)
+					n2 := noise2D(absX*2.7, absY*2.7)
+					n3 := noise2D(absX*5.5, absY*5.5)
+					h := n1*0.58 + n2*0.28 + n3*0.14
+					switch {
+					case h < lakesDensity:
+						terrain[y][x] = string(TerrainWater)
+					case h < grassThreshold:
+						terrain[y][x] = string(TerrainGrass)
+					case h < forestThreshold:
+						terrain[y][x] = string(TerrainForest)
+						berryVal := hash2D(int64(absX)+9999, int64(absY)+8888)
+						if berryVal < berriesDensity {
+							objects[y][x] = WorldObject{Type: "berries", Amount: 100, MaxAmount: 100}
+						}
+					default:
+						terrain[y][x] = string(TerrainRock)
+						objects[y][x] = WorldObject{Type: "waste_pile", Amount: 0, MaxAmount: 100}
+					}
 				}
-			default:
-				terrain[y][x] = string(TerrainRock)
-				objects[y][x] = WorldObject{Type: "waste_pile", Amount: 0, MaxAmount: 100}
+				// Update progress every updateInterval rows
+				if y%updateInterval == 0 {
+					s.genProgress.Store(int32(2 + (y*18)/s.worldHeight))
+				}
 			}
-		}
+		}()
 	}
+	
+	// Send rows to workers
+	go func() {
+		for y := 0; y < s.worldHeight; y++ {
+			rowChan <- y
+		}
+		close(rowChan)
+	}()
+	
+	wg.Wait()
 
 	// ── Phase 2: Flüsse ─────────────────────────────────────────────────────
 	s.genPhase.Store("Flüsse & Seen")
