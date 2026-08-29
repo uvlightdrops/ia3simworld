@@ -221,51 +221,25 @@ This command:
 - ensures the namespace exists
 - deploys the local Helm chart
 
-Alternatively, use the Makefile wrapper:
-
-```bash
-make dev-up
-```
-
 ### Check status
 
 ```bash
-python3 scripts/ia3ctl.py dev-mk-status 1
-```
-
-Or via Makefile:
-
-```bash
-make dev-status
+ia3ctl dev-mk-status 1
 ```
 
 ### Deploy additional federated namespaces
 
 ```bash
-python3 scripts/ia3ctl.py dev-mk-start 2    # Deploys instance 2 in namespace ia3-2
-python3 scripts/ia3ctl.py dev-mk-start 3    # Deploys instance 3 in namespace ia3-3
+ia3ctl dev-mk-start 2    # Deploys instance 2 in namespace ia3-2
+ia3ctl dev-mk-start 3    # Deploys instance 3 in namespace ia3-3
 ```
 
 ### Rebuild Docker Images & Hot-Reload Services in Minikube
 
-To rebuild Docker images inside Minikube and trigger a rollout restart across all active namespaces (`ia3`, `ia3-2`, `ia3-3`):
+To rebuild Docker images inside Minikube and trigger a rollout restart across all active namespaces (`ia3-1`, `ia3-2`, `ia3-3`):
 
 ```bash
-# Rebuild and update ALL services across all namespaces
-make prod-update         # or: ./scripts/prod/update.sh all
-
-# Rebuild specific individual services
-make prod-update-sim     # Rebuilds world-sim engine
-make prod-update-web     # Rebuilds web-client frontend
-make prod-update-gateway # Rebuilds api-gateway
-make prod-update-agent   # Rebuilds agent-service
-```
-
-### Direct Minikube Docker Image Build Commands (Without Restart)
-
-If you want to build images directly into Minikube without immediately triggering a restart:
-
-```bash
+# Direct image builds in Minikube
 minikube image build -t world-sim:dev apps/world-sim
 minikube image build -t web-client:dev apps/web-client
 minikube image build -t api-gateway:dev apps/api-gateway
@@ -281,15 +255,17 @@ kubectl rollout restart deployment/world-sim deployment/web-client deployment/ap
 ### Uninstall or reset the chart
 
 ```bash
-make dev-down        # Uninstalls ia3 release
-make dev-down-2      # Uninstalls ia3-2 release
-make dev-down-3      # Uninstalls ia3-3 release
+ia3ctl dev-mk-stop 1         # Uninstalls ia3-1 release
+ia3ctl dev-mk-stop 2         # Uninstalls ia3-2 release
+ia3ctl dev-mk-stop 3         # Uninstalls ia3-3 release
 ```
 
 To completely remove a namespace:
 
 ```bash
-make nuke
+kubectl delete ns ia3-1 --wait=false  # Remove ia3-1 namespace
+kubectl delete ns ia3-2 --wait=false  # Remove ia3-2 namespace
+kubectl delete ns ia3-3 --wait=false  # Remove ia3-3 namespace
 ```
 
 ## Build/test commands

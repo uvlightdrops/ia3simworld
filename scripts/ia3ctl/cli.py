@@ -290,7 +290,7 @@ def stop_local(nodes: list[int], services: list[str]) -> int:
             subprocess.run(["kill", str(pid)], check=False)
         if res.stdout.strip() == "":
             print(f"no pid found for port={port}")
-    return 0 if killed else 0
+    return 0
 
 
 def start_mk(nodes: list[int], services: list[str], prod: bool) -> int:
