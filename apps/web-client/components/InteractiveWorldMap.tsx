@@ -124,15 +124,19 @@ export function InteractiveWorldMap({
     setOffsetY(newOffsetY);
   };
 
-  const hasInitialized = useRef(false);
+  const lastWorldSize = useRef<{ width: number; height: number } | null>(null);
   useEffect(() => {
-    if (state.worldSize.width > 0 && dimensions.width > 0) {
-      if (!hasInitialized.current) {
-        fitToScreen();
-        if (dimensions.width !== 800 || dimensions.height !== 600) {
-          hasInitialized.current = true;
-        }
-      }
+    if (state.worldSize.width <= 0 || dimensions.width <= 0) return;
+    
+    // Re-fit if world size changed
+    const sizeChanged =
+      !lastWorldSize.current ||
+      lastWorldSize.current.width !== state.worldSize.width ||
+      lastWorldSize.current.height !== state.worldSize.height;
+    
+    if (sizeChanged) {
+      fitToScreen();
+      lastWorldSize.current = { ...state.worldSize };
     }
   }, [dimensions, state.worldSize]);
 

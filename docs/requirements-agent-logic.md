@@ -40,14 +40,14 @@ Dieses Dokument spezifiziert die fachlichen und technischen Anforderungen an die
 
 ---
 
-## 5. Spieler-Interaktionen (Interactive Quests)
+## 5. Spieler-Interaktionen (Interactive Quests) ✅ IMPLEMENTED
 
-- **Interaktive Anfragen (Phase A):** Human Player können NPCs in unmittelbarer Nähe direkt ansprechen:
-  - 📦 **Ressource liefern:** Bitte um 20 Rohstoffe.
-  - 🧭 **Gemeinsam erkunden:** NPC folgt dem Spieler.
-  - 📖 **Weisheit lehren:** Wissensaustausch.
-  - 🌾 **Feld anlegen:** Auftragen eines neuen Getreidefelds.
-- **NPC-Anfragen & Auto-Antwort:** NPCs stellen Anfragen an den Spieler. Antworten erfolgen manuell oder per Auto-Accept / Auto-Reject Modus.
+### 5.1 Interaktive Anfragen
+- ✅ **Interaktive Anfragen:** Human Player und NPCs interagieren bidirektional mit Multiple-Choice-Optionen
+- ✅ **Echtzeit-Entscheidungen & Auto-Antworten:** Manuell (Multiple Choice innerhalb von 12 Ticks) oder Auto-Antwort-Modi (Auto-Accept / Auto-Reject)
+- ✅ **Tiefere Interaktion:** NPCs fragen an, ob tiefere Interaktion erwünscht ist, bevor weiterführende Quests freigeschaltet werden
+- ✅ **Energieabhängige Geschwindigkeiten:** NPCs und HPCs bewegen sich mit 3, 2 oder 1 Kachel(n) pro Tick je nach Energiezustand
+- **Implementation:** Human-NPC interaction protocol mit 12-Tick response timeout und energy-scaled movement modifiers
 
 ---
 

@@ -1,8 +1,12 @@
 # IA3 SimWorld Performance & Rendering Analysis Report
 
 **Date**: 2026-08-29  
-**Status**: Comprehensive Analysis Complete  
-**Next**: Begin implementing fixes in priority order
+**Status**: Analysis Complete – Implementation Tracking Moved  
+**See**: [`docs/performance-optimizations.md`](../docs/performance-optimizations.md) for implementation status & detailed results
+
+---
+
+⚠️ **NOTE**: This report documents the *analysis phase*. For **implemented optimizations & current status**, see `docs/performance-optimizations.md` which tracks all Phase 1, 2, and 3 work.
 
 ---
 

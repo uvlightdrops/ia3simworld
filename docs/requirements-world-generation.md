@@ -49,6 +49,14 @@ Dieses Dokument spezifiziert die fachlichen und technischen Anforderungen an die
 
 ---
 
+## 6. Siedlungen & Infrastruktur ✅ IMPLEMENTED
+
+- ✅ **Siedlungsabstand & Durchmesser:** Siedlungszentren haben mindestens **80 Tiles toroidale Distanz** voneinander mit variablem Durchmesser zwischen 4-8 Tiles
+- ✅ **18 Gebäudetypen:** home, farm, mill, forge, pottery, quarry, workshop, market, court, storehouse, temple, graveyard, mine, bridge, monument, shrine, well, crops
+- ✅ **OSM-Karteniinspektor:** Interaktiver 2D-Vektormap-Inspektor mit WGS84 → 10m Grid Projektion, Boundingbox-Rechner für Sektoren und Geodatenquellen-Verwaltung
+
+---
+
 ## 5. Realwelt-Geodaten & AR-Integration (Augsburg / Bayern)
 
 - **OpenData Bayern DGM-Import:** Höhendaten der Vermessungsverwaltung Bayern werden prozedural in 256x256-Sektoren übertragen.

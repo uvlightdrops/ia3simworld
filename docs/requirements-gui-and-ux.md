@@ -36,7 +36,23 @@ Dieses Dokument spezifiziert die fachlichen und technischen Anforderungen an das
 
 ---
 
-## 4. Intelligentes CSS Grid Layout
+## 6. Implementierte GUI & UX Features ✅
+
+### 6.1 Kartenverwaltung & Admin-Bereich
+- ✅ **Karten-Erstellungszeit:** Erstellungszeitstempel (`createdAt`) im Admin-Board mit World-Size und Version
+- ✅ **Spielstand-Speicherung:** Speichern/Laden von Simulationen (`/api/control/save-game`, `/api/control/load-game`)
+- ✅ **Regenerate-Dialog:** Bestätigungsdialog mit Rückmeldung zum Artefakt-Zurücksetzen
+- ✅ **OSM-Vektorkarten-Inspektor:** Interaktive 2D-Karteneinsicht mit WGS84 → 10m Grid Projektion
+- ✅ **Admin-Menü mit Unterseiten:** Strukturierung in "Kartenmanagement", "Agentenprofile", "Allgemein & Landschaft"
+
+### 6.2 Map & Dashboard Layout
+- ✅ **Quadratischer Viewport:** 1:1 Aspect-Ratio Map mit vertikaler Legende daneben
+- ✅ **Dreigliederungs-Dropdown:** Gruppiert die drei Game-Manager KI-Seiten in einem Menü
+- ✅ **Sidebar-Optimierung:** Mitmach-Modus nach unten, Status-Spalte entfernt, Agenten-Details daneben
+
+---
+
+## 6. FooterBar & Hintergrund-Prozesse
 
 - **Platzsparendes Auto-Packing:** Alle Dashboards nutzen `display: grid`, `grid-template-columns: repeat(auto-fill, minmax(360px, 1fr))` und `grid-auto-flow: dense`.
 - **Responsive Anpassung:** Automatische Ausrichtung ohne ungenutzte Freiräume bei variablen Bildschirmauflösungen.

@@ -147,7 +147,21 @@ export default function Home() {
       const res = await fetch(`${API}/api/state?compact=true`);
       if (res.ok) {
         const nextState = await res.json();
-        setState(nextState);
+        setState(prev => ({
+          ...prev,
+          running: nextState.running,
+          tick: nextState.tick,
+          tickRateMs: nextState.tickRateMs,
+          totalAgents: nextState.totalAgents,
+          agents: nextState.agents,
+          events: nextState.events,
+          lastUpdated: nextState.lastUpdated,
+          generating: nextState.generating ?? prev.generating,
+          genProgress: nextState.genProgress ?? prev.genProgress,
+          grassPolicy: nextState.grassPolicy ?? prev.grassPolicy,
+          forestPolicy: nextState.forestPolicy ?? prev.forestPolicy,
+          activeLaws: nextState.activeLaws ?? prev.activeLaws,
+        }));
         if (nextState.relicSpawnRate) {
           setManagerSettings(prev => ({
             ...prev,
@@ -189,6 +203,7 @@ export default function Home() {
         const fullState = await res.json();
         setState(prev => ({
           ...prev,
+          worldSize: fullState.worldSize,
           terrain: fullState.terrain,
           objects: fullState.objects,
         }));

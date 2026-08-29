@@ -584,7 +584,8 @@ func main() {
 }
 
 func startBroadcastLoop(worldSimURL string) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// Poll at same interval as backend tick (200ms) to avoid redundant polling
+	ticker := time.NewTicker(200 * time.Millisecond)
 	var lastTick uint64 = 0
 
 	type BasicState struct {

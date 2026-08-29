@@ -702,6 +702,8 @@ func (s *Sim) snapshotState(maxAgents int) WorldState {
 	tickMs := int(s.tickDuration.Milliseconds())
 	s.tickDurationMu.RUnlock()
 
+	currentTick := s.tick.Load()
+
 	eventsCopy := make([]string, len(s.recentEvents))
 	copy(eventsCopy, s.recentEvents)
 
@@ -713,13 +715,29 @@ func (s *Sim) snapshotState(maxAgents int) WorldState {
 		agentsCopy = append(agentsCopy, a)
 	}
 
-	subTerrain := make([][]string, s.worldHeight)
-	subObjects := make([][]WorldObject, s.worldHeight)
-	for y := 0; y < s.worldHeight; y++ {
-		subTerrain[y] = make([]string, s.worldWidth)
-		subObjects[y] = make([]WorldObject, s.worldWidth)
-		copy(subTerrain[y], s.terrain[y])
-		copy(subObjects[y], s.objects[y])
+	// Use cached terrain/objects if they haven't changed since last snapshot
+	var subTerrain [][]string
+	var subObjects [][]WorldObject
+
+	if s.cachedTerrainTick == currentTick && s.cachedTerrain != nil {
+		// Cache is valid, reuse it (no allocations!)
+		subTerrain = s.cachedTerrain
+		subObjects = s.cachedObjects
+	} else {
+		// Cache invalid, copy terrain/objects and update cache
+		subTerrain = make([][]string, s.worldHeight)
+		subObjects = make([][]WorldObject, s.worldHeight)
+		for y := 0; y < s.worldHeight; y++ {
+			subTerrain[y] = make([]string, s.worldWidth)
+			subObjects[y] = make([]WorldObject, s.worldWidth)
+			copy(subTerrain[y], s.terrain[y])
+			copy(subObjects[y], s.objects[y])
+		}
+		// Update cache for next call within same tick
+		s.cachedTerrain = subTerrain
+		s.cachedObjects = subObjects
+		s.cachedTerrainTick = currentTick
+		s.cachedObjectsTick = currentTick
 	}
 
 	nodeName := getenv("NODE_NAME", "ia3-1")
@@ -731,7 +749,7 @@ func (s *Sim) snapshotState(maxAgents int) WorldState {
 	}
 
 	return WorldState{
-		Tick:              s.tick.Load(),
+		Tick:              currentTick,
 		Running:           s.running.Load(),
 		TickRateMs:        tickMs,
 		TotalAgents:       len(agentsCopy),

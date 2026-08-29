@@ -399,6 +399,12 @@ type Sim struct {
 	// sectorClaims: all claimed sectors across the federation
 	sectorClaims    map[Position]SectorClaim
 	sectorClaimsMu  sync.RWMutex
+
+	// State Serialization Cache (prevents allocating millions on each poll)
+	cachedTerrain      [][]string
+	cachedObjects      [][]WorldObject
+	cachedTerrainTick  uint64
+	cachedObjectsTick  uint64
 }
 
 func (s *Sim) addEvent(msg string) {
