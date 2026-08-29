@@ -42,7 +42,7 @@ Alle erfolgreich umgesetzten Anforderungen wurden systematisch archiviert und in
 - **[x] Admin menu mit unterseiten:** Strukturierung des Admin-Bereichs in die Unterseiten "Kartenmanagement & Quellen", "Agentenprofile & Inspektoren" und "Allgemein & Landschaft".
 - **[x] Sidebar-Optimierung:** Mitmach-Modus (Human Player) nach unten verschoben, Status-Spalte aus der Active-Agents-Tabelle entfernt und Agenten-Details-Karte direkt rechts daneben in einem Nebeneinander-Layout platziert.
 - [ ] Box Agenten-details ist immer sichtbar mit der inneren struktur und dummy einträgen wenn kein agent links ausgewählt ist
-- [ ] 
+- [ ] das feedback über den fortschitt inline anzeigen in der Box Simulation 
 ### 6. World map & Terrain Generation (Teilweise Abgeschlossen)
 - **[x] Siedlungsabstand & Durchmesser:** Siedlungszentren haben strikt ≥ 80 Kacheln toroidale Distanz voneinander und besitzen einen variablen Durchmesser zwischen 4 und 8 Kacheln.
 - **[ ] Unendliche Sektoren:** Dynamische Generierung von Sektoren, die nahtlos aneinander anschließen, um eine unendliche Weltkarte zu simulieren.

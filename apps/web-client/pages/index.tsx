@@ -12,6 +12,15 @@ import { useI18n } from "../context/I18nContext";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:17080";
 
+// Helper: Convert node ID (ia3-1, ia3-2, ia3-3) to sector coordinates
+function nodeSectorCoordinate(nodeId: string | undefined): string {
+  if (!nodeId) return "Sector (0, 0)";
+  if (nodeId === "ia3-1" || nodeId === "ia3") return "Sector (0, 0)";
+  if (nodeId === "ia3-2") return "Sector (1, 0)";
+  if (nodeId === "ia3-3") return "Sector (0, 1)";
+  return "Sector (0, 0)"; // fallback
+}
+
 export default function Home() {
   const { lang, setLang, t } = useI18n();
   const [state, setState] = useState<WorldState>(initialState);
@@ -711,18 +720,12 @@ export default function Home() {
               {connectedRemoteURL ? "🌍 Shared World" : "🌍 Local Host"}
             </strong>
           </div>
-          <div style={{ minWidth: 100, boxSizing: "border-box" }}>
-            <div style={headerLabel}>Game Nodes</div>
-            <strong style={{ color: "#10b981", display: "block", whiteSpace: "nowrap" }}>
-              {(ownNodeName === "ia3-1" || ownNodeName === "ia3")
-                ? Array.from(new Set(
-                    (state.discoveredSectors && state.discoveredSectors.length > 0 ? state.discoveredSectors : ["(0, 0)"]).map(sec => {
-                      if (sec.includes("1, 0") || sec.includes("1,0")) return "ia3-2";
-                      if (sec.includes("0, 1") || sec.includes("0,1")) return "ia3-3";
-                      return "ia3-1";
-                    })
-                  )).sort().join(", ")
-                : ownNodeName
+          <div style={{ minWidth: 140, boxSizing: "border-box" }}>
+            <div style={headerLabel}>World Sectors</div>
+            <strong style={{ color: "#10b981", display: "block", whiteSpace: "nowrap", fontSize: 12 }}>
+              {state.discoveredSectors && state.discoveredSectors.length > 0
+                ? state.discoveredSectors.sort().join(", ")
+                : "Sector (0, 0)"
               }
             </strong>
           </div>
@@ -1212,7 +1215,7 @@ export default function Home() {
                               {agent.name}
                             </td>
                             <td style={{ padding: "6px", fontSize: 11, color: "#cbd5e1" }}>
-                              {agent.homelandNodeId ? `Node ${agent.homelandNodeId.split('-')[1]}` : "—"}
+                              {agent.homelandNodeId ? nodeSectorCoordinate(agent.homelandNodeId) : "Sector (0, 0)"}
                             </td>
                             <td style={{ padding: "6px", textAlign: "right", fontWeight: "bold", color: agent.energy < 30 ? "#ef4444" : "#10b981" }}>
                               {agent.energy}%
