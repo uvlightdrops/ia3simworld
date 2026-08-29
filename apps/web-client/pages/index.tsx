@@ -1171,7 +1171,7 @@ export default function Home() {
             </div>
 
             {/* Active Agents Table & Agent Details Card (Side-by-Side Container) */}
-            <div style={{ display: "grid", gridTemplateColumns: selectedAgent ? "1fr 1fr" : "1fr", gap: 12, width: "100%" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, width: "100%" }}>
               {/* 1. Active Agent Table (Compact, Status column omitted) */}
               <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
                 <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
@@ -1225,17 +1225,20 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 2. Selected Agent Detail Card (Positioned to the right of Active Agents table) */}
-              {selectedAgent ? (() => {
+              {/* 2. Selected Agent Detail Card (Always Visible) */}
+              {(() => {
                 const agent = state.agents.find(a => a.id === selectedAgent);
-                if (!agent) return null;
-                const col = agentColors[agent.name] ?? "#3b82f6";
+                const col = agent ? (agentColors[agent.name] ?? "#3b82f6") : "#334155";
                 return (
-                  <div style={{ border: `1px solid ${col}`, borderRadius: 12, background: "#1e293b", padding: 14 }}>
+                  <div style={{ border: `1px solid ${col}`, borderRadius: 12, background: "#1e293b", padding: 14, minHeight: "600px", display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: col }} />
-                      <h3 style={{ margin: 0, fontSize: 16, color: "#38bdf8" }}>{agent.name} Details</h3>
+                      <h3 style={{ margin: 0, fontSize: 16, color: "#38bdf8" }}>{agent ? `${agent.name} Details` : "No Agent Selected"}</h3>
                     </div>
+                    
+                    {agent ? (
+                      <>
+                      
                     <div style={{ fontSize: 13, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
                       <div>Role: <b>{agent.role}</b></div>
                       <div>Mood: <b style={{ textTransform: "capitalize" }}>{agent.mood}</b></div>
@@ -1370,9 +1373,28 @@ export default function Home() {
                         <p style={{ margin: "2px 0", fontSize: 12 }}>Type: <b style={{ textTransform: "uppercase" }}>{agent.agreement?.type}</b> ({agent.agreement?.ticksLeft} ticks left)</p>
                       </div>
                     )}
+                      </>
+                    ) : (
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", textAlign: "center" }}>
+                        <div>
+                          <p style={{ fontSize: 14, marginBottom: 10 }}>Select an agent from the list to view details</p>
+                          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+                            <p style={{ marginBottom: 8 }}>Dummy Properties:</p>
+                            <div style={{ background: "#0f172a", padding: 10, borderRadius: 6, textAlign: "left" }}>
+                              <p style={{ margin: 4 }}>Role: <b>—</b></p>
+                              <p style={{ margin: 4 }}>Mood: <b>—</b></p>
+                              <p style={{ margin: 4 }}>Status: <b>—</b></p>
+                              <p style={{ margin: 4 }}>Position: <b>—</b></p>
+                              <p style={{ margin: 4 }}>Energy: <b>—</b></p>
+                              <p style={{ margin: 4 }}>Resources: <b>—</b></p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
-              })() : null}
+              })()}
             </div>
 
             {/* Live Event Feed (Scrolling) */}
