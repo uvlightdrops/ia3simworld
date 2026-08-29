@@ -16,6 +16,18 @@ from .nodes import parse_nodes
 from .ports import local_ports, mk_ports
 from .status import report_local, report_local_build, report_mk
 from .system import is_endpoint_healthy, is_port_in_use
+from .k8s import (
+    minikube_running,
+    start_minikube,
+    helm_install,
+    helm_uninstall,
+    kubectl_delete_namespace,
+    kubectl_get_pods,
+    kubectl_get_svc,
+    kubectl_logs,
+    get_namespace,
+    get_helm_release,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -282,17 +294,37 @@ def stop_local(nodes: list[int], services: list[str]) -> int:
 
 
 def start_mk(nodes: list[int], services: list[str], prod: bool) -> int:
-    env = os.environ.copy()
-    env["NODES"] = str(max(nodes))
-    target = "prod-start" if prod else "dev-up"
-    return run(["make", target, f"NODES={max(nodes)}"], cwd=ROOT, env=env)
+    """Start Minikube and deploy services to specified nodes."""
+    # Ensure minikube is running
+    if not minikube_running():
+        print("Starting Minikube...")
+        if start_minikube() != 0:
+            print("Failed to start Minikube")
+            return 1
+    
+    # Deploy to each node
+    for node in nodes:
+        ns = get_namespace(node, prod)
+        release = get_helm_release(node, prod)
+        print(f"\nDeploying node {node} (namespace: {ns}, release: {release})...")
+        if helm_install(node, prod) != 0:
+            print(f"Failed to deploy node {node}")
+            return 1
+    
+    return 0
 
 
 def stop_mk(nodes: list[int], services: list[str], prod: bool) -> int:
-    env = os.environ.copy()
-    env["NODES"] = str(max(nodes))
-    target = "prod-stop" if prod else "dev-down"
-    return run(["make", target, f"NODES={max(nodes)}"], cwd=ROOT, env=env)
+    """Stop and uninstall services from specified nodes."""
+    for node in nodes:
+        ns = get_namespace(node, prod)
+        release = get_helm_release(node, prod)
+        print(f"Stopping node {node} (namespace: {ns}, release: {release})...")
+        if helm_uninstall(node, prod) != 0:
+            print(f"Failed to stop node {node}")
+            return 1
+    
+    return 0
 
 
 def status_local(nodes: list[int]) -> int:
