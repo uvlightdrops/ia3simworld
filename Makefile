@@ -4,46 +4,7 @@ HELM_RELEASE ?= ia3-1
 CHART_PATH ?= deploy/helm/ia3-local
 VALUES ?= deploy/helm/ia3-local/values-local.yaml
 
-.PHONY: dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status dev-mk-up dev-mk-down dev-mk-status-full logs nuke proto dev-mk-up-1 dev-mk-down-1 nuke-mk-1 dev-mk-up-2 dev-mk-down-2 nuke-mk-2 dev-mk-up-3 dev-mk-down-3 nuke-mk-3
-
-NODES ?= [1,2,3]
-SERVICES ?= web,api,sim,agent
-
-dev-lokal-start:
-	python3 -u scripts/ia3ctl.py dev-lokal-start --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-lokal-stop:
-	python3 -u scripts/ia3ctl.py dev-lokal-stop --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-lokal-status:
-	python3 -u scripts/ia3ctl.py dev-lokal-status --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-lokal-diagnose:
-	python3 -u scripts/ia3ctl.py dev-lokal-diagnose --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-lokal-build-status:
-	python3 -u scripts/ia3ctl.py dev-lokal-build-status --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-lokal-clean-web-cache:
-	python3 -u scripts/ia3ctl.py dev-lokal-clean-web-cache --nodes "$(NODES)" --services "web"
-
-dev-mk-start:
-	python3 -u scripts/ia3ctl.py dev-mk-start --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-mk-stop:
-	python3 -u scripts/ia3ctl.py dev-mk-stop --nodes "$(NODES)" --services "$(SERVICES)"
-
-dev-mk-status:
-	python3 -u scripts/ia3ctl.py dev-mk-status --nodes "$(NODES)" --services "$(SERVICES)"
-
-prod-mk-start:
-	python3 -u scripts/ia3ctl.py prod-mk-start --nodes "$(NODES)" --services "$(SERVICES)"
-
-prod-mk-stop:
-	python3 -u scripts/ia3ctl.py prod-mk-stop --nodes "$(NODES)" --services "$(SERVICES)"
-
-prod-mk-status:
-	python3 -u scripts/ia3ctl.py prod-mk-status --nodes "$(NODES)" --services "$(SERVICES)"
+.PHONY: dev-mk-up dev-mk-down dev-mk-status-full logs nuke proto dev-mk-up-1 dev-mk-down-1 nuke-mk-1 dev-mk-up-2 dev-mk-down-2 nuke-mk-2 dev-mk-up-3 dev-mk-down-3 nuke-mk-3
 
 dev-mk-up:
 	minikube status >/dev/null 2>&1 || minikube start --cpus=4 --memory=8192
