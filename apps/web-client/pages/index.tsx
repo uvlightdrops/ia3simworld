@@ -837,51 +837,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* QUICK AGENT STATUS */}
-      <div style={{
-        marginBottom: 16,
-        padding: "12px 14px",
-        border: "1px solid #334155",
-        borderRadius: 12,
-        background: "#111827",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 16,
-        flexShrink: 0,
-      }}>
-        <div>
-          <div style={headerLabel}>Agent Status</div>
-          <strong style={{ color: state.agents.length > 0 ? "#10b981" : "#f59e0b", display: "block" }}>
-            {state.agents.length > 0 ? `${state.agents.length} active agents` : "No active agents visible"}
-          </strong>
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {state.agents.slice(0, 6).map((agent) => (
-            <span
-              key={agent.id}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 8px",
-                borderRadius: 999,
-                background: "#0f172a",
-                border: "1px solid #334155",
-                fontSize: 12,
-              }}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: agentColors[agent.name] ?? "#3b82f6" }} />
-              {agent.name}
-            </span>
-          ))}
-          {state.agents.length > 6 && (
-            <span style={{ fontSize: 12, color: "#94a3b8", alignSelf: "center" }}>
-              +{state.agents.length - 6} more
-            </span>
-          )}
-        </div>
-      </div>
 
       {/* ACTIVE TAB: LIVE MAP GRID */}
       {activeTab === "map" && (
@@ -1181,6 +1136,7 @@ export default function Home() {
                       <tr style={{ borderBottom: "1px solid #334155", textAlign: "left", color: "#94a3b8" }}>
                         <th style={{ padding: "4px 6px" }}>Color</th>
                         <th style={{ padding: "4px 6px" }}>Name</th>
+                        <th style={{ padding: "4px 6px" }}>Homeland</th>
                         <th style={{ padding: "4px 6px", textAlign: "right" }}>Energy</th>
                       </tr>
                     </thead>
@@ -1207,6 +1163,9 @@ export default function Home() {
                             </td>
                             <td style={{ padding: "6px", fontWeight: "bold", color: isSelected ? "#38bdf8" : "#f1f5f9" }}>
                               {agent.name}
+                            </td>
+                            <td style={{ padding: "6px", fontSize: 11, color: "#cbd5e1" }}>
+                              {agent.homelandNodeId ? `Node ${agent.homelandNodeId.split('-')[1]}` : "—"}
                             </td>
                             <td style={{ padding: "6px", textAlign: "right", fontWeight: "bold", color: agent.energy < 30 ? "#ef4444" : "#10b981" }}>
                               {agent.energy}%
