@@ -12,13 +12,13 @@ import { useI18n } from "../context/I18nContext";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:17080";
 
-// Helper: Convert node ID (ia3-1, ia3-2, ia3-3) to sector coordinates
-function nodeSectorCoordinate(nodeId: string | undefined): string {
-  if (!nodeId) return "Sector (0, 0)";
-  if (nodeId === "ia3-1" || nodeId === "ia3") return "Sector (0, 0)";
-  if (nodeId === "ia3-2") return "Sector (1, 0)";
-  if (nodeId === "ia3-3") return "Sector (0, 1)";
-  return "Sector (0, 0)"; // fallback
+// Helper: Convert node ID (ia3-1, ia3-2, ia3-3) to sector coordinates with node ID
+function nodeSectorDisplay(nodeId: string | undefined): string {
+  if (!nodeId) return "Sector (0, 0) [ia3-1]";
+  if (nodeId === "ia3-1" || nodeId === "ia3") return "Sector (0, 0) [ia3-1]";
+  if (nodeId === "ia3-2") return "Sector (1, 0) [ia3-2]";
+  if (nodeId === "ia3-3") return "Sector (0, 1) [ia3-3]";
+  return "Sector (0, 0) [ia3-1]"; // fallback
 }
 
 export default function Home() {
@@ -1215,7 +1215,7 @@ export default function Home() {
                               {agent.name}
                             </td>
                             <td style={{ padding: "6px", fontSize: 11, color: "#cbd5e1" }}>
-                              {agent.homelandNodeId ? nodeSectorCoordinate(agent.homelandNodeId) : "Sector (0, 0)"}
+                              {agent.homelandNodeId ? nodeSectorDisplay(agent.homelandNodeId) : "Sector (0, 0) [ia3-1]"}
                             </td>
                             <td style={{ padding: "6px", textAlign: "right", fontWeight: "bold", color: agent.energy < 30 ? "#ef4444" : "#10b981" }}>
                               {agent.energy}%
