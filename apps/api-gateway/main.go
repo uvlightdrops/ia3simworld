@@ -499,6 +499,11 @@ func main() {
 		}
 		remoteGatewayMutex.RUnlock()
 
+		// Forward query parameters (e.g., ?compact=true)
+		if q := r.URL.RawQuery; q != "" {
+			target += "?" + q
+		}
+
 		resp, err := http.Get(target)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
