@@ -19,7 +19,7 @@ from .system import is_endpoint_healthy, is_port_in_use
 
 ROOT = Path(__file__).resolve().parents[2]
 VERBOSE_START = True
-app = typer.Typer(add_completion=True, help="IA3 SimWorld lifecycle CLI")
+app = typer.Typer(add_completion=False, help="IA3 SimWorld lifecycle CLI")
 
 
 def parse_services(raw: str | None) -> list[str]:
@@ -406,62 +406,202 @@ def completion(
     )
 ) -> None:
     """
-    Install or show completion for ia3ctl.
+    Generate shell completion script for ia3ctl.
     
-    Bash:
+    Examples:
+        # Bash
         ia3ctl completion --shell bash
-        eval "$(_IA3CTL_COMPLETE=bash_source ia3ctl)"
+        eval "$(ia3ctl completion --shell bash)"
     
-    Zsh:
+        # Zsh
         ia3ctl completion --shell zsh
-        eval "$(_IA3CTL_COMPLETE=zsh_source ia3ctl)"
+        eval "$(ia3ctl completion --shell zsh)"
     
-    Fish:
+        # Fish
         ia3ctl completion --shell fish
         ia3ctl completion --shell fish | source
-    
-    PowerShell:
-        Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete
-        $IA3CTL_COMPLETE = "powershell_source"
-        ia3ctl completion --shell powershell | Out-String | Invoke-Expression
     """
-    from enum import Enum
+    shell_lower = shell.lower()
     
-    class Shell(str, Enum):
-        BASH = "bash"
-        ZSH = "zsh"
-        FISH = "fish"
-        POWERSHELL = "powershell"
+    if shell_lower == "bash":
+        # Bash completion script
+        script = """_ia3ctl_completion() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
     
-    shell_map = {
-        Shell.BASH: "_IA3CTL_COMPLETE=bash_source",
-        Shell.ZSH: "_IA3CTL_COMPLETE=zsh_source",
-        Shell.FISH: "_IA3CTL_COMPLETE=fish_source",
-        Shell.POWERSHELL: "_IA3CTL_COMPLETE=powershell_source",
+    # Get all commands from help
+    local commands="dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help"
+    
+    if [[ ${cur} == -* ]] ; then
+        opts="--help"
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+    else
+        COMPREPLY=( $(compgen -W "${commands}" -- ${cur}) )
+    fi
+    return 0
+}
+complete -o default -F _ia3ctl_completion ia3ctl
+"""
+        typer.echo(script)
+    
+    elif shell_lower == "zsh":
+        # Zsh completion
+        script = """#compdef ia3ctl
+
+_ia3ctl() {
+  local -a commands=(
+    'dev-lokal-start:Start local services'
+    'dev-lokal-stop:Stop local services'
+    'dev-lokal-status:Check local service status'
+    'dev-lokal-diagnose:Diagnose local services'
+    'dev-lokal-build-status:Check build status'
+    'dev-lokal-clean-web-cache:Clean web cache'
+    'dev-mk-start:Start Minikube services'
+    'dev-mk-stop:Stop Minikube services'
+    'dev-mk-status:Check Minikube status'
+    'prod-mk-start:Start production Minikube'
+    'prod-mk-stop:Stop production Minikube'
+    'prod-mk-status:Check production status'
+    'completion:Generate shell completion'
+    'help:Show help'
+  )
+  
+  _describe 'command' commands
+}
+
+_ia3ctl
+"""
+        typer.echo(script)
+    
+    elif shell_lower == "fish":
+        # Fish completion
+        script = """complete -c ia3ctl -f
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-start" -d "Start local services"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-stop" -d "Stop local services"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-status" -d "Check local service status"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-diagnose" -d "Diagnose local services"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-build-status" -d "Check build status"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-lokal-clean-web-cache" -d "Clean web cache"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-mk-start" -d "Start Minikube services"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-mk-stop" -d "Stop Minikube services"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "dev-mk-status" -d "Check Minikube status"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "prod-mk-start" -d "Start production Minikube"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "prod-mk-stop" -d "Stop production Minikube"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "prod-mk-status" -d "Check production status"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "completion" -d "Generate shell completion"
+complete -c ia3ctl -n "__fish_use_subcommand_from_list dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status prod-mk-start prod-mk-stop prod-mk-status completion help" -a "help" -d "Show help"
+"""
+        typer.echo(script)
+    
+    elif shell_lower == "powershell":
+        # PowerShell completion
+        script = """Register-ArgumentCompleter -CommandName ia3ctl -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    
+    $commands = @(
+        'dev-lokal-start',
+        'dev-lokal-stop',
+        'dev-lokal-status',
+        'dev-lokal-diagnose',
+        'dev-lokal-build-status',
+        'dev-lokal-clean-web-cache',
+        'dev-mk-start',
+        'dev-mk-stop',
+        'dev-mk-status',
+        'prod-mk-start',
+        'prod-mk-stop',
+        'prod-mk-status',
+        'completion',
+        'help'
+    )
+    
+    $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
+}
+"""
+        typer.echo(script)
     
-    if shell not in shell_map:
+    else:
+        typer.echo(f"Unknown shell: {shell}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("install-completion")
+def install_completion_cmd(
+    shell: str = typer.Option(
+        None,
+        "--shell",
+        "-s",
+        help="Shell type (bash, zsh, fish, powershell). Auto-detect if not provided.",
+    )
+) -> None:
+    """
+    Install shell completion permanently.
+    
+    Examples:
+        ia3ctl install-completion --shell bash
+        ia3ctl install-completion --shell zsh
+    """
+    import os
+    import shlex
+    
+    # Auto-detect shell if not provided
+    if not shell:
+        current_shell = os.environ.get("SHELL", "").lower()
+        if "bash" in current_shell:
+            shell = "bash"
+        elif "zsh" in current_shell:
+            shell = "zsh"
+        elif "fish" in current_shell:
+            shell = "fish"
+        elif "powershell" in current_shell or "pwsh" in current_shell:
+            shell = "powershell"
+        else:
+            typer.echo("Could not detect shell. Use --shell to specify: bash, zsh, fish, or powershell", err=True)
+            raise typer.Exit(1)
+    
+    shell = shell.lower()
+    home = os.path.expanduser("~")
+    
+    if shell == "bash":
+        profile_file = os.path.join(home, ".bashrc")
+        completion_line = 'eval "$(ia3ctl completion --shell bash)"'
+        typer.echo(f"Adding completion to {profile_file}...")
+    elif shell == "zsh":
+        profile_file = os.path.join(home, ".zshrc")
+        completion_line = 'eval "$(ia3ctl completion --shell zsh)"'
+        typer.echo(f"Adding completion to {profile_file}...")
+    elif shell == "fish":
+        profile_dir = os.path.join(home, ".config/fish/conf.d")
+        profile_file = os.path.join(profile_dir, "ia3ctl.fish")
+        os.makedirs(profile_dir, exist_ok=True)
+        completion_line = "ia3ctl completion --shell fish | source"
+        typer.echo(f"Creating {profile_file}...")
+    elif shell == "powershell":
+        typer.echo("PowerShell setup requires manual configuration. Run:")
+        typer.echo('  ia3ctl completion --shell powershell | Out-String | Invoke-Expression')
+        raise typer.Exit(0)
+    else:
         typer.echo(f"Unknown shell: {shell}", err=True)
         raise typer.Exit(1)
     
-    env_var = shell_map[shell]
-    if shell == "fish":
-        typer.echo(f"\n# Add this to your fish config (~/.config/fish/config.fish):")
-        typer.echo(f"eval (env {env_var} ia3ctl)\n")
-    elif shell == "powershell":
-        typer.echo(f"\n# Add this to your PowerShell profile (Get-Profile):")
-        typer.echo(f"$env:{env_var} = 'powershell_source'; ia3ctl completion --shell powershell | Out-String | Invoke-Expression\n")
-    else:
-        typer.echo(f"\n# Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):")
-        typer.echo(f'eval "$({env_var} ia3ctl)"\n')
-
-
-@app.command("--install-completion", hidden=True)
-def install_completion_wrapper() -> None:
-    """Install shell completion."""
-    typer.echo("Use: eval \"$(_IA3CTL_COMPLETE=bash_source ia3ctl)\"")
-    typer.echo("     or ia3ctl completion --shell <bash|zsh|fish|powershell>")
-    raise typer.Exit(0)
+    # Check if already installed
+    if os.path.exists(profile_file):
+        with open(profile_file, "r") as f:
+            content = f.read()
+            if "ia3ctl" in content:
+                typer.echo("Completion already installed!", err=True)
+                raise typer.Exit(0)
+    
+    # Add completion line
+    with open(profile_file, "a") as f:
+        f.write(f"\n# ia3ctl completion\n{completion_line}\n")
+    
+    typer.echo(f"✓ Completion installed for {shell}!")
+    typer.echo(f"  Run: source {profile_file}")
 
 
 def main(argv: list[str] | None = None) -> int:

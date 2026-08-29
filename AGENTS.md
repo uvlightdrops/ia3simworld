@@ -107,31 +107,33 @@ ia3ctl --help
 
 #### Install Shell Completion (optional but recommended)
 
-For **bash**, add to `~/.bashrc`:
+The simplest way is automatic installation:
 
 ```bash
-eval "$(_IA3CTL_COMPLETE=bash_source ia3ctl)"
+ia3ctl install-completion
 ```
 
-For **zsh**, add to `~/.zshrc`:
+Or explicitly for your shell:
 
 ```bash
-eval "$(_IA3CTL_COMPLETE=zsh_source ia3ctl)"
+ia3ctl install-completion --shell bash
+ia3ctl install-completion --shell zsh
+ia3ctl install-completion --shell fish
 ```
 
-For **fish**, add to `~/.config/fish/config.fish`:
-
-```fish
-env _IA3CTL_COMPLETE=fish_source ia3ctl | source
-```
-
-For interactive guidance on completion install, run:
+Then reload your shell:
 
 ```bash
-python3 scripts/ia3ctl.py completion --shell <bash|zsh|fish|powershell>
+source ~/.bashrc  # or ~/.zshrc, ~/.config/fish/config.fish, etc.
 ```
 
-See [CLI_COMPLETION.md](docs/CLI_COMPLETION.md) for more details.
+For more details, see [CLI_COMPLETION.md](docs/CLI_COMPLETION.md).
+
+After installation, completion works automatically:
+
+```bash
+ia3ctl dev-<TAB>  # Suggests subcommands
+```
 
 ### Local dependencies for non-Kubernetes runs
 
