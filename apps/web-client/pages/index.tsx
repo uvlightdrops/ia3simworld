@@ -1174,9 +1174,9 @@ export default function Home() {
             </div>
 
             {/* Active Agents Table & Agent Details Card (Side-by-Side Container) */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, width: "100%" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, width: "100%", maxHeight: "500px" }}>
               {/* 1. Active Agent Table (Compact, Status column omitted) */}
-              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
+              <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12, maxHeight: "100%", overflowY: "auto" }}>
                 <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
                   Active Agents
                 </h3>
@@ -1233,7 +1233,7 @@ export default function Home() {
                 const agent = state.agents.find(a => a.id === selectedAgent);
                 const col = agent ? (agentColors[agent.name] ?? "#3b82f6") : "#334155";
                 return (
-                  <div style={{ border: `1px solid ${col}`, borderRadius: 12, background: "#1e293b", padding: 14, minHeight: "600px", display: "flex", flexDirection: "column" }}>
+                  <div style={{ border: `1px solid ${col}`, borderRadius: 12, background: "#1e293b", padding: 14, maxHeight: "500px", overflowY: "auto", display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: col }} />
                       <h3 style={{ margin: 0, fontSize: 16, color: "#38bdf8" }}>{agent ? `${agent.name} Details` : "No Agent Selected"}</h3>
