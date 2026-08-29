@@ -71,7 +71,12 @@ export function InteractiveWorldMap({
   }, [state]);
 
   // Continuous animation frame loop for smooth movement and selection ring pulsing
+  // THROTTLED: Only animate when simulation is running to save CPU when idle
   useEffect(() => {
+    if (!state.running) {
+      return;  // Skip animation when paused
+    }
+    
     let frameId: number;
     const loop = () => {
       setAnimTick((t) => t + 1);
@@ -79,7 +84,7 @@ export function InteractiveWorldMap({
     };
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, []);
+  }, [state.running]);
 
   // Handle resizing of the container automatically
   useEffect(() => {

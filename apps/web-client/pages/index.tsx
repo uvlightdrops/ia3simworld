@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useState, useRef } from "react";
+import { type CSSProperties, useEffect, useState, useRef, useMemo } from "react";
 import { WorldState, initialState, agentColors, terrainColors, terrainLabels } from "../types/sim";
 import { InteractiveWorldMap } from "../components/InteractiveWorldMap";
 import { GeisteslebenBoard } from "../components/GeisteslebenBoard";
@@ -391,40 +391,60 @@ export default function Home() {
     }, 1000);
 
     // Fast-poll during terrain generation so progress overlay updates smoothly
-    const genPoll = setInterval(() => {
-      void refresh();
-    }, 300);
+    // ONLY run when generating to avoid unnecessary network traffic
+    let genPollInterval: NodeJS.Timeout | null = null;
+    const setupGenPoll = () => {
+      if (!genPollInterval && state.generating) {
+        genPollInterval = setInterval(() => {
+          if (state.generating) {
+            void refresh();
+          } else {
+            if (genPollInterval) {
+              clearInterval(genPollInterval);
+              genPollInterval = null;
+            }
+          }
+        }, 300);
+      }
+    };
+    
+    setupGenPoll();
 
     return () => {
       socket.close();
       clearInterval(fallbackPoll);
-      clearInterval(genPoll);
+      if (genPollInterval) {
+        clearInterval(genPollInterval);
+      }
     };
   }, []);
 
-  // Compute dynamic resource statistics
-  const terrainStats = { grass: 0, water: 0, forest: 0, rock: 0, home: 0, road: 0 };
-  let totalBerries = 0;
-  let totalWaste = 0;
+  // Compute dynamic resource statistics - MEMOIZED to avoid O(N²) recalculation
+  const { terrainStats, totalBerries, totalWaste } = useMemo(() => {
+    const stats = { grass: 0, water: 0, forest: 0, rock: 0, home: 0, road: 0 };
+    let berries = 0;
+    let waste = 0;
 
-  if (state.terrain) {
-    for (let y = 0; y < state.terrain.length; y++) {
-      for (let x = 0; x < state.terrain[y].length; x++) {
-        const t = state.terrain[y][x];
-        if (t in terrainStats) {
-          terrainStats[t as keyof typeof terrainStats]++;
-        }
-        const obj = state.objects?.[y]?.[x];
-        if (obj) {
-          if (obj.type === "berries") {
-            totalBerries += obj.amount;
-          } else if (obj.type === "waste_pile") {
-            totalWaste += obj.amount;
+    if (state.terrain) {
+      for (let y = 0; y < state.terrain.length; y++) {
+        for (let x = 0; x < state.terrain[y].length; x++) {
+          const t = state.terrain[y][x];
+          if (t in stats) {
+            stats[t as keyof typeof stats]++;
+          }
+          const obj = state.objects?.[y]?.[x];
+          if (obj) {
+            if (obj.type === "berries") {
+              berries += obj.amount;
+            } else if (obj.type === "waste_pile") {
+              waste += obj.amount;
+            }
           }
         }
       }
     }
-  }
+    return { terrainStats: stats, totalBerries: berries, totalWaste: waste };
+  }, [state.terrain, state.objects]);
 
   const hour = state.tick % 24;
   const timeStr = `${String(hour).padStart(2, "0")}:00`;
