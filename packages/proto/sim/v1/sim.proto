@@ -56,6 +56,11 @@ message DecideActionsRequest {
   int32 law_propose_rate = 9;
   int32 econ_event_rate = 10;
   int32 artifact_quality = 11; // 50-150% quality modifier
+  bool ollama_enabled = 12;
+  string ollama_base_url = 13;
+  string ollama_model = 14;
+  string ollama_mode = 15; // "thoughts_only", "full_decisions", "disabled"
+  int32 ollama_timeout_ms = 16;
 }
 
 message AgentDecision {

@@ -58,7 +58,7 @@ Eine detaillierte Beschreibung der Verhaltensregeln und des Kooperations-Datenmo
 ## 4. Dezentrale Multiplayer-Architektur (Multi-Node / P2P)
 
 ### success Meilensteine (Erledigt)
-- [x] **Föderiertes Sharding (Sektor-Knoten):** Aufteilung der Weltkarte in eigenständige Chunks (Sektor (0,0) auf `ia3`, Sektor (1,0) auf `ia3-two`, Sektor (0,1) auf `ia3-three`) mit vollautomatischem, toroidalem Handover-Grenzübertritts-Protokoll per HTTP REST API zwischen den Sim-Knoten.
+- [x] **Föderiertes Sharding (Sektor-Knoten):** Aufteilung der Weltkarte in eigenständige Chunks (Sektor (0,0) auf `ia3`, Sektor (1,0) auf `ia3-2`, Sektor (0,1) auf `ia3-3`) mit vollautomatischem, toroidalem Handover-Grenzübertritts-Protokoll per HTTP REST API zwischen den Sim-Knoten.
 
 ### backlog Aufgaben (Offen / Geplant)
 - [ ] **Dezentraler Konsens-Algorithmus:** Leichtgewichtiger Validierungs-Mechanismus (z. B. Raft-Konsens), um Cheat-Versuche durch manipulierte Sektor-Nodes zu unterbinden.

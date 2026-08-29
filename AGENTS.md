@@ -82,6 +82,44 @@ Install the following tools on the other machine:
 - Python 3.12+
 - Node.js 20+
 
+### CLI Setup
+
+The primary orchestration tool is **`ia3ctl`**, a Python-based CLI using Typer. All local development and Minikube commands flow through this CLI.
+
+#### Install Typer (one-time)
+
+```bash
+pip3 install typer
+```
+
+#### Install Shell Completion (optional but recommended)
+
+For **bash**, add to `~/.bashrc`:
+
+```bash
+eval "$(_IA3CTL_COMPLETE=bash_source ia3ctl)"
+```
+
+For **zsh**, add to `~/.zshrc`:
+
+```bash
+eval "$(_IA3CTL_COMPLETE=zsh_source ia3ctl)"
+```
+
+For **fish**, add to `~/.config/fish/config.fish`:
+
+```fish
+env _IA3CTL_COMPLETE=fish_source ia3ctl | source
+```
+
+For interactive guidance on completion install, run:
+
+```bash
+python3 scripts/ia3ctl.py completion --shell <bash|zsh|fish|powershell>
+```
+
+See [CLI_COMPLETION.md](docs/CLI_COMPLETION.md) for more details.
+
 ### Local dependencies for non-Kubernetes runs
 
 Start the local infrastructure if needed:
@@ -94,23 +132,39 @@ This starts:
 - PostgreSQL on port 5432
 - Redis on port 6379
 
+### Port Ranges & Dynamic Node Overview
+
+To keep **Direct Host Development** (`./scripts/dev/start.sh [N]`) and **Minikube Kubernetes Mode** (`./scripts/prod/start.sh [N]`) clearly separated, scalable, and non-conflicting, all scripts use shared helper logic in `scripts/dev/common-helpers.sh`:
+
+- **Direct Host Development (Non-K8s)** for Node $i$ ($i \ge 1$):
+  - `web-client`: **`12000 + (i - 1)`** (e.g. `:12000`, `:12001`, `:12002`)
+  - `api-gateway`: **`17080 + (i - 1)*2`** (e.g. `:17080`, `:17082`, `:17084`)
+  - `world-sim`: **`17081 + (i - 1)*2`** (e.g. `:17081`, `:17083`, `:17085`)
+  - `agent-service`: **`50051 + (i - 1)`** (e.g. `:50051`, `:50052`, `:50053`)
+
+- **Minikube Kubernetes Port-Forwarding** for Node $i$ ($i \ge 1$):
+  - `ia3` (Primary Cluster, $i=1$): Web `:13000`, Gateway `:18080`
+  - `ia3-2` (Federated Node 2, $i=2$): Web `:13001`, Gateway `:18081`
+  - `ia3-3` (Federated Node 3, $i=3$): Web `:13002`, Gateway `:18082`
+  - Node $i$: Namespace `get_k8s_namespace(i)`, Web `13000 + (i - 1)`, Gateway `18080 + (i - 1)`
+
 ### Run the Go services directly
 
 ```bash
 cd apps/world-sim
-go run .
+PORT=17081 go run .
 
 cd ../api-gateway
-go run .
+PORT=17080 WORLD_SIM_URL=http://localhost:17081 go run .
 ```
 
-The current world-sim service listens on `:8081` and exposes:
+The direct world-sim service listens on `:17081` and exposes:
 - `GET /healthz`
 - `POST /control/start`
 - `POST /control/pause`
 - `GET /state`
 
-The current API gateway listens on `:8080` and exposes:
+The direct API gateway listens on `:17080` and exposes:
 - `GET /healthz`
 - `POST /api/control/start`
 - `POST /api/control/pause`
@@ -121,11 +175,11 @@ The current API gateway listens on `:8080` and exposes:
 ```bash
 cd apps/web-client
 npm install
-npm run dev
+NEXT_PUBLIC_API_BASE=http://localhost:17080 npm run dev -- -p 12000
 ```
 
 Then open the app in the browser at:
-- http://localhost:3000
+- http://localhost:12000
 
 ### Run the agent service locally
 
@@ -141,10 +195,10 @@ python main.py
 
 ### Start the local cluster and deploy
 
-From the repo root:
+From the repo root, use the CLI:
 
 ```bash
-make dev-up
+python3 scripts/ia3ctl.py dev-mk-start 1
 ```
 
 This command:
@@ -152,28 +206,72 @@ This command:
 - ensures the namespace exists
 - deploys the local Helm chart
 
+Alternatively, use the Makefile wrapper:
+
+```bash
+make dev-up
+```
+
 ### Check status
+
+```bash
+python3 scripts/ia3ctl.py dev-mk-status 1
+```
+
+Or via Makefile:
 
 ```bash
 make dev-status
 ```
 
-### Port forward the API gateway
+### Deploy additional federated namespaces
 
 ```bash
-make port-forward
+python3 scripts/ia3ctl.py dev-mk-start 2    # Deploys instance 2 in namespace ia3-2
+python3 scripts/ia3ctl.py dev-mk-start 3    # Deploys instance 3 in namespace ia3-3
 ```
 
-Then access the API via:
-- http://localhost:8080/api/state
+### Rebuild Docker Images & Hot-Reload Services in Minikube
+
+To rebuild Docker images inside Minikube and trigger a rollout restart across all active namespaces (`ia3`, `ia3-2`, `ia3-3`):
+
+```bash
+# Rebuild and update ALL services across all namespaces
+make prod-update         # or: ./scripts/prod/update.sh all
+
+# Rebuild specific individual services
+make prod-update-sim     # Rebuilds world-sim engine
+make prod-update-web     # Rebuilds web-client frontend
+make prod-update-gateway # Rebuilds api-gateway
+make prod-update-agent   # Rebuilds agent-service
+```
+
+### Direct Minikube Docker Image Build Commands (Without Restart)
+
+If you want to build images directly into Minikube without immediately triggering a restart:
+
+```bash
+minikube image build -t world-sim:dev apps/world-sim
+minikube image build -t web-client:dev apps/web-client
+minikube image build -t api-gateway:dev apps/api-gateway
+minikube image build -t agent-service:dev apps/agent-service
+```
+
+To manually trigger a rollout restart for a specific namespace afterwards:
+
+```bash
+kubectl rollout restart deployment/world-sim deployment/web-client deployment/api-gateway -n ia3-2
+```
 
 ### Uninstall or reset the chart
 
 ```bash
-make dev-down
+make dev-down        # Uninstalls ia3 release
+make dev-down-2      # Uninstalls ia3-2 release
+make dev-down-3      # Uninstalls ia3-3 release
 ```
 
-To completely remove the namespace:
+To completely remove a namespace:
 
 ```bash
 make nuke

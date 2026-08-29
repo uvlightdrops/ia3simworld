@@ -1,116 +1,116 @@
 # IA3 SimWorld – Entwickler-Notizen
 
-Dieses Dokument beschreibt den Betrieb der IA3 SimWorld-Plattform im lokalen Entwicklungsmodus sowie das Deployment in Kubernetes (Minikube).
+Dieses Dokument beschreibt den aktuellen, praktischen Entwicklungs- und Betriebsweg für IA3 SimWorld.
 
----
+## 1. Grundprinzip
 
-## 1. Lokaler Betrieb (Non-K8s)
+- **Lokale Entwickler-Orchestrierung** läuft über die **Python-CLI** in `scripts/cli.py`.
+- **Make** ist nur noch eine dünne, bequeme Frontdoor.
+- **Minikube/Kubernetes** bleibt der Weg für Cluster-ähnliche Entwicklung und spätere Produktion.
+- **Docker Compose** startet lokale Basisdienste wie PostgreSQL und Redis.
 
-Für eine schnelle lokale Entwicklung können die Services als native Hintergrundprozesse auf dem Host gestartet und gestoppt werden. Die Steuerung erfolgt über automatisierte Skripte im Ordner `scripts/dev/` (auch über `make dev-start`/`dev-stop`/`dev-diagnose` verfügbar):
+## 2. Lokaler Betrieb
 
-- **Starten:** Führt Port-Prüfungen durch und startet alle Go-, Python- und Node-Services im Hintergrund.
-  ```bash
-  ./scripts/dev/start.sh     # oder: make dev-start
-  ```
-- **Diagnose & Status:** Prüft, ob alle lokalen Ports aktiv belegt und `/healthz`-Endpunkte erreichbar sind.
-  ```bash
-  ./scripts/dev/diagnose.sh  # oder: make dev-diagnose
-  ```
-- **Stoppen:** Beendet alle gestarteten Hintergrundprozesse des aktuellen Benutzers sauber.
-  ```bash
-  ./scripts/dev/stop.sh      # oder: make dev-stop
-  ```
+Für direkte lokale Entwicklung werden die Dienste als Host-Prozesse gestartet.
 
-Für Abwärtskompatibilität können auch weiterhin `./scripts/dev/start-local.sh`, `./scripts/dev/stop-local.sh` und `./scripts/dev/diagnose-local.sh` verwendet werden.
+### Starten
 
-### Erwartete Endpunkte im lokalen Betrieb:
-- **Web UI:** http://localhost:13000 (bzw. Entwicklungsmodus `:3000`)
-- **API Gateway:** http://localhost:18080 (Healthz: `/healthz`, State-API: `/api/state`)
-- **World Simulator (world-sim):** http://localhost:18081 (Healthz: `/healthz`)
-- **Agenten-Service (gRPC):** `localhost:50051`
+```bash
+make dev-start
+# oder direkt:
+python3 scripts/cli.py dev-lokal-start --nodes "[1,2,3]" --services "web,api,sim,agent"
+```
 
----
+Kurzformen für Nodes:
 
-## 2. Minikube Deployment (Kubernetes)
+```bash
+make dev-lokal-start NODES="1"
+make dev-lokal-start NODES="1,2"
+make dev-lokal-start NODES="[1,2]"
+```
 
-Das gesamte System lässt sich vollautomatisch in einer lokalen Kubernetes-Umgebung (Minikube) mittels Helm orchestrieren. Die Steuerung kann über das `Makefile` oder vollautomatisiert über die Skripte im Ordner `scripts/prod/` erfolgen:
+### Stoppen
 
-### Vollautomatisiertes K8s-Management (Empfohlen):
+```bash
+make dev-stop
+# oder direkt:
+python3 scripts/cli.py dev-lokal-stop --nodes "[1,2,3]" --services "web,api,sim,agent"
+```
 
-- **Komplettes K8s Setup Starten:** Startet Minikube, baut/verifiziert alle vier Anwendungs-Images, deployt beide Multiplayer-Instanzen (`ia3` und `ia3-two`) via Helm, wartet auf die Pod-Bereitschaft und startet das Port-Forwarding im Hintergrund.
-  ```bash
-  ./scripts/prod/start.sh     # oder: make prod-start
-  ```
-- **K8s Status & Diagnose:** Führt tiefe Diagnosechecks auf Minikube-Ebene, Pod- und Service-Status, Port-Forward-Tunnels sowie HTTP-Endpunkt-Snapshots aus.
-  ```bash
-  ./scripts/prod/diagnose.sh  # oder: make prod-diagnose
-  ```
-- **K8s Setup Stoppen:** Stoppt alle Hintergrund-Portforwarder und deinstalliert die Helm-Releases sauber.
-  ```bash
-  ./scripts/prod/stop.sh      # oder: make prod-stop
-  ```
+### Status
 
-### Manueller K8s-Workflow (Alternative):
+```bash
+python3 scripts/cli.py dev-lokal-status --nodes "[1,2,3]" --services "web,api,sim,agent"
+```
 
-1. **Cluster starten & Helm-Chart deployen:**
-   Erstellt den Kubernetes-Namespace `ia3`, baut/lädt die Infrastruktur (PostgreSQL, Redis) und deployt die SimWorld-Anwendungs-Pods.
-   ```bash
-   make dev-up
-   ```
+### Lokale Ports pro Node
 
-2. **Pod- und Service-Status prüfen:**
-   Zeigt alle laufenden Pods, deren Bereitschaft (Readiness) und die K8s-Services im Namespace an.
-   ```bash
-   make dev-status
-   ```
+- **Web UI:** `12000 + (i - 1)`
+- **API Gateway:** `17080 + (i - 1)`
+- **World Sim:** `17180 + (i - 1)`
+- **Agent Service:** `50051 + (i - 1)`
 
-3. **Port-Forwarding aktivieren:**
-   Leitet die Kubernetes-Services sicher auf Ihre lokalen Ports weiter (API-Gateway auf `:18080`, Web UI auf `:13000`). Das Skript prüft vorab, ob bereits aktive Weiterleitungen existieren.
-   ```bash
-   make port-forward
-   ```
+Beispiel:
 
-4. **Port-Forwarding Status prüfen:**
-   Liefert eine detaillierte Übersicht über aktive Forwarder, deren Prozess-IDs (PIDs) und lokale Zugriffs-URLs.
-   ```bash
-   make port-forward-status
-   ```
+- Node 1: Web `12000`, API `17080`, Sim `17180`, Agent `50051`
+- Node 2: Web `12001`, API `17081`, Sim `17181`, Agent `50052`
 
-5. **Entwicklung & Live-Updates (Hot-Reloading):**
-   Wenn Sie Codeänderungen vornehmen, können Sie den entsprechenden Service (oder alle Services) mit einem einzigen Befehl im Minikube-Cluster neu bauen und im Kubernetes-Deployment aktualisieren (rollout restart):
-   ```bash
-   # Einen einzelnen Service neu bauen und live schalten (z. B. das Web-Frontend):
-   ./scripts/prod/update.sh web-client  # oder: make prod-update-web
+## 3. Minikube / Kubernetes
 
-   # Die Go-Simulation neu bauen und live schalten:
-   ./scripts/prod/update.sh world-sim   # oder: make prod-update-sim
+Für lokale Cluster-Entwicklung und spätere Cloud-Nähe werden Helm und Minikube genutzt.
 
-   # Alle Services auf einmal neu bauen und live schalten:
-   ./scripts/prod/update.sh all         # oder: make prod-update
-   ```
-   Dieses Skript baut das Docker-Image direkt im Minikube-Daemon neu, stößt ein `rollout restart` in allen aktiven Namespaces (`ia3` und `ia3-two`) an und wartet, bis die Aktualisierung erfolgreich abgeschlossen ist.
+### Starten
 
-   *Alternativer manueller Weg:*
-   ```bash
-   minikube image build -t web-client:dev apps/web-client
-   minikube kubectl -- rollout restart deployment/web-client -n ia3
-   ```
+```bash
+make dev-up
+```
 
-6. **Abbau & Bereinigung:**
-   Deinstalliert die Helm-Release im Namespace:
-   ```bash
-   make dev-down
-   ```
-   Um den gesamten Namespace inklusive aller Volumes und Services vollständig zu löschen (Nuke):
-   ```bash
-   make nuke
-   ```
+### Stoppen
 
----
+```bash
+make dev-down
+```
 
-## 3. Architektur & Port-Belegungen
+### Status
 
-- **`apps/world-sim` (Port 8081 / K8s internal):** Authoritative Go-Simulation, verwaltet Ticks und physischen State.
-- **`apps/agent-service` (Port 50051 / K8s internal):** Python-Mesa-Agentenlogik, steuert kognitive Verhaltenszyklen via gRPC.
-- **`apps/api-gateway` (Port 8080 -> local 18080):** Go-Echtzeit-Schnittstelle (HTTP & WebSockets).
-- **`apps/web-client` (Port 3000 -> local 13000):** Next.js-Frontend mit interaktivem HTML5 Canvas.
+```bash
+make dev-status
+```
+
+### Zusätzliche Föderationsknoten
+
+```bash
+make dev-up-2
+make dev-up-3
+make dev-down-2
+make dev-down-3
+```
+
+### Minikube-Ports
+
+- **ia3 / Node 1:** Web `13000`, Gateway `18080`
+- **ia3-2 / Node 2:** Web `13001`, Gateway `18081`
+- **ia3-3 / Node 3:** Web `13002`, Gateway `18082`
+
+## 4. Wichtige Befehle
+
+```bash
+make proto        # gRPC-Schemas generieren
+make logs         # world-sim Logs im K8s-Namespace ansehen
+make nuke         # Namespace komplett entfernen
+```
+
+## 5. Technische Einordnung
+
+- Die Python-CLI ist der eigentliche Orchestrierungs-Root.
+- Make bleibt als stabile, kurze Nutzerschnittstelle erhalten.
+- K8s- und Minikube-Befehle im Makefile sind bewusst noch direkt, weil sie aktuell die verlässlichste Frontdoor sind.
+- Für komplexere K8s-Automation sollte später die Python-CLI erweitert werden, nicht Bash.
+
+## 6. Typische Empfehlung
+
+- **Lokale Dev-Starts:** `make dev-start`
+- **Lokales Stoppen:** `make dev-stop`
+- **Cluster-/Minikube-Start:** `make dev-up`
+- **Cluster-/Minikube-Status:** `make dev-status`
+- **Proto-Generierung:** `make proto`

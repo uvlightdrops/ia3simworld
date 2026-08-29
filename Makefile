@@ -1,87 +1,99 @@
 SHELL := /bin/bash
-NAMESPACE ?= ia3
-HELM_RELEASE ?= ia3-local
+NAMESPACE ?= ia3-1
+HELM_RELEASE ?= ia3-1
 CHART_PATH ?= deploy/helm/ia3-local
 VALUES ?= deploy/helm/ia3-local/values-local.yaml
 
-.PHONY: dev-up dev-down dev-status port-forward port-forward-status logs nuke proto dev-up-two dev-down-two nuke-two dev-up-three dev-down-three nuke-three dev-start dev-stop dev-diagnose prod-start prod-stop prod-diagnose prod-update prod-update-web prod-update-sim prod-update-gateway prod-update-agent
+.PHONY: dev-lokal-start dev-lokal-stop dev-lokal-status dev-lokal-diagnose dev-lokal-build-status dev-lokal-clean-web-cache dev-mk-start dev-mk-stop dev-mk-status dev-mk-up dev-mk-down dev-mk-status-full logs nuke proto dev-mk-up-1 dev-mk-down-1 nuke-mk-1 dev-mk-up-2 dev-mk-down-2 nuke-mk-2 dev-mk-up-3 dev-mk-down-3 nuke-mk-3
 
-# Direct Local Development Services (Non-Kubernetes)
-dev-start:
-	./scripts/dev/start.sh
+NODES ?= [1,2,3]
+SERVICES ?= web,api,sim,agent
 
-dev-stop:
-	./scripts/dev/stop.sh
+dev-lokal-start:
+	python3 -u scripts/ia3ctl.py dev-lokal-start --nodes "$(NODES)" --services "$(SERVICES)"
 
-dev-diagnose:
-	./scripts/dev/diagnose.sh
+dev-lokal-stop:
+	python3 -u scripts/ia3ctl.py dev-lokal-stop --nodes "$(NODES)" --services "$(SERVICES)"
 
-# Kubernetes Deployment via Minikube
-prod-start:
-	./scripts/prod/start.sh
+dev-lokal-status:
+	python3 -u scripts/ia3ctl.py dev-lokal-status --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-stop:
-	./scripts/prod/stop.sh
+dev-lokal-diagnose:
+	python3 -u scripts/ia3ctl.py dev-lokal-diagnose --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-diagnose:
-	./scripts/prod/diagnose.sh
+dev-lokal-build-status:
+	python3 -u scripts/ia3ctl.py dev-lokal-build-status --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-update:
-	./scripts/prod/update.sh all
+dev-lokal-clean-web-cache:
+	python3 -u scripts/ia3ctl.py dev-lokal-clean-web-cache --nodes "$(NODES)" --services "web"
 
-prod-update-web:
-	./scripts/prod/update.sh web-client
+dev-mk-start:
+	python3 -u scripts/ia3ctl.py dev-mk-start --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-update-sim:
-	./scripts/prod/update.sh world-sim
+dev-mk-stop:
+	python3 -u scripts/ia3ctl.py dev-mk-stop --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-update-gateway:
-	./scripts/prod/update.sh api-gateway
+dev-mk-status:
+	python3 -u scripts/ia3ctl.py dev-mk-status --nodes "$(NODES)" --services "$(SERVICES)"
 
-prod-update-agent:
-	./scripts/prod/update.sh agent-service
+prod-mk-start:
+	python3 -u scripts/ia3ctl.py prod-mk-start --nodes "$(NODES)" --services "$(SERVICES)"
 
-dev-up:
-	minikube start --cpus=4 --memory=8192
+prod-mk-stop:
+	python3 -u scripts/ia3ctl.py prod-mk-stop --nodes "$(NODES)" --services "$(SERVICES)"
+
+prod-mk-status:
+	python3 -u scripts/ia3ctl.py prod-mk-status --nodes "$(NODES)" --services "$(SERVICES)"
+
+dev-mk-up:
+	minikube status >/dev/null 2>&1 || minikube start --cpus=4 --memory=8192
+	kubectl delete validatingwebhookconfiguration ingress-nginx-admission --ignore-not-found || true
 	kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 	helm upgrade --install $(HELM_RELEASE) $(CHART_PATH) -n $(NAMESPACE) -f $(VALUES)
 
-dev-down:
-	helm uninstall $(HELM_RELEASE) -n $(NAMESPACE) || true
+dev-mk-down:
+	@if helm status $(HELM_RELEASE) -n $(NAMESPACE) >/dev/null 2>&1; then \
+		helm uninstall $(HELM_RELEASE) -n $(NAMESPACE); \
+	else \
+		echo "Release '$(HELM_RELEASE)' in namespace '$(NAMESPACE)' not deployed."; \
+	fi
 
-dev-status:
+dev-mk-status-full:
 	kubectl get pods -n $(NAMESPACE)
 	kubectl get svc -n $(NAMESPACE)
-
-port-forward:
-	./scripts/prod/port-forward-k8s.sh
-
-port-forward-status:
-	./scripts/prod/port-forward-status.sh
 
 logs:
 	kubectl logs -n $(NAMESPACE) deploy/world-sim -f
 
-nuke: dev-down
+nuke: dev-mk-down
 	kubectl delete ns $(NAMESPACE) --wait=false || true
 
-dev-up-two:
-	$(MAKE) dev-up NAMESPACE=ia3-two HELM_RELEASE=ia3-two
+dev-mk-up-1:
+	$(MAKE) dev-mk-up NAMESPACE=ia3-1 HELM_RELEASE=ia3-1
 
-dev-down-two:
-	$(MAKE) dev-down NAMESPACE=ia3-two HELM_RELEASE=ia3-two
+dev-mk-down-1:
+	$(MAKE) dev-mk-down NAMESPACE=ia3-1 HELM_RELEASE=ia3-1
 
-nuke-two:
-	$(MAKE) nuke NAMESPACE=ia3-two HELM_RELEASE=ia3-two
+nuke-mk-1:
+	$(MAKE) nuke NAMESPACE=ia3-1 HELM_RELEASE=ia3-1
 
-dev-up-three:
-	$(MAKE) dev-up NAMESPACE=ia3-three HELM_RELEASE=ia3-three
+dev-mk-up-2:
+	$(MAKE) dev-mk-up NAMESPACE=ia3-2 HELM_RELEASE=ia3-2
 
-dev-down-three:
-	$(MAKE) dev-down NAMESPACE=ia3-three HELM_RELEASE=ia3-three
+dev-mk-down-2:
+	$(MAKE) dev-mk-down NAMESPACE=ia3-2 HELM_RELEASE=ia3-2
 
-nuke-three:
-	$(MAKE) nuke NAMESPACE=ia3-three HELM_RELEASE=ia3-three
+nuke-mk-2:
+	$(MAKE) nuke NAMESPACE=ia3-2 HELM_RELEASE=ia3-2
+
+dev-mk-up-3:
+	$(MAKE) dev-mk-up NAMESPACE=ia3-3 HELM_RELEASE=ia3-3
+
+dev-mk-down-3:
+	$(MAKE) dev-mk-down NAMESPACE=ia3-3 HELM_RELEASE=ia3-3
+
+nuke-mk-3:
+	$(MAKE) nuke NAMESPACE=ia3-3 HELM_RELEASE=ia3-3
 
 proto:
 	export PATH=$$HOME/go/bin:$$(go env GOPATH)/bin:$$PATH && \

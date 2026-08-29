@@ -1,6 +1,7 @@
 import sys
 import os
 import random
+import json
 from concurrent import futures
 import grpc
 import mesa
@@ -13,6 +14,38 @@ from sim.v1 import sim_pb2_grpc
 
 
 import time
+import urllib.request
+import urllib.error
+
+def query_ollama(prompt, system_prompt="", base_url="http://localhost:11434", model="llama3.2:latest", timeout_ms=8000):
+    """
+    Queries local Ollama HTTP endpoint synchronously with strict timeout & rule-based fallback.
+    """
+    if not base_url or not model:
+        return None
+    url = f"{base_url.rstrip('/')}/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "system": system_prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 120
+        }
+    }
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        timeout_sec = max(1.0, float(timeout_ms) / 1000.0)
+        with urllib.request.urlopen(req, timeout=timeout_sec) as response:
+            if response.status == 200:
+                res_body = json.loads(response.read().decode('utf-8'))
+                res_text = res_body.get('response', '').strip()
+                return res_text if res_text else None
+    except Exception as e:
+        print(f"[Ollama GameMaster KI Error / Rule Fallback]: {e}")
+    return None
 
 # AI Game Managers state for Social Threefolding (Soziale Dreigliederung)
 class GameManagerState:
@@ -144,31 +177,36 @@ class MesaSimAgent(mesa.Agent):
         is_next_to_home = False
         is_next_to_market = False
         is_next_to_court = False
+        is_next_to_temple = False
         
         adjacent_tiles = []
         for pos in adjacent_positions:
             tile = self.model.terrain_map.get(pos)
             if tile:
                 adjacent_tiles.append(tile)
-                if tile.terrain_type in ["water", "forest", "crops"]:
+                if tile.terrain_type in ["water", "forest", "crops", "farm"]:
                     is_next_to_water_or_forest_or_crops = True
                 if tile.terrain_type == "rock":
                     is_next_to_rock = True
-                if tile.terrain_type == "home":
+                if tile.terrain_type in ["home", "farm"]:
                     is_next_to_home = True
                 if tile.terrain_type == "market":
                     is_next_to_market = True
                 if tile.terrain_type == "court":
                     is_next_to_court = True
+                if tile.terrain_type in ["temple", "graveyard"]:
+                    is_next_to_temple = True
 
         current_tile = self.model.terrain_map.get(self.position)
         if current_tile:
-            if current_tile.terrain_type == "home":
+            if current_tile.terrain_type in ["home", "farm"]:
                 is_next_to_home = True
             if current_tile.terrain_type == "market":
                 is_next_to_market = True
             if current_tile.terrain_type == "court":
                 is_next_to_court = True
+            if current_tile.terrain_type in ["temple", "graveyard"]:
+                is_next_to_temple = True
 
         # 2. Run prioritized behavioral decision tree within Mesa
         
@@ -253,13 +291,16 @@ class MesaSimAgent(mesa.Agent):
             
             # Evening (18-23)
             elif 18 <= hour <= 23:
-                if is_next_to_court:
+                if is_next_to_temple:
+                    self.status = "meditating at temple"
+                    self.mood = "spiritual"
+                elif is_next_to_court:
                     self.status = "attending tribunal"
                     self.mood = "reflective"
                 else:
                     self.status = "heading to court"
                     self.mood = "reflective"
-                    self.target = self.model.find_nearest_resource(self.position, ["court"])
+                    self.target = self.model.find_nearest_resource(self.position, ["court", "temple"])
             
             # Afternoon / Free / Work Patrolling time (12-17)
             else:
@@ -382,15 +423,17 @@ class MesaSimModel(mesa.Model):
         best_pos = start_pos
         for pos, tile in self.terrain_map.items():
             if tile.terrain_type in terrain_types:
-                # Find a walkable neighboring cell
-                neighbors = self.grid.get_neighborhood(pos, moore=False, include_center=False)
+                neighbors = self.grid.get_neighborhood(pos, moore=True, include_center=True)
                 for n_pos in neighbors:
                     n_tile = self.terrain_map.get(n_pos)
-                    if n_tile and n_tile.terrain_type not in ["water", "rock"]:
+                    t_type = n_tile.terrain_type if n_tile else "grass"
+                    if t_type not in ["water", "rock"]:
                         dist = self.toroidal_distance(start_pos, n_pos)
-                        if dist < min_dist:
+                        if dist < min_dist and dist > 0:
                             min_dist = dist
                             best_pos = n_pos
+        if best_pos == start_pos:
+            return self.get_random_walkable_tile()
         return best_pos
 
     def toroidal_distance(self, p1, p2):
@@ -403,9 +446,14 @@ class MesaSimModel(mesa.Model):
         return dx + dy
 
     def get_random_walkable_tile(self):
-        if self.walkable_tiles:
-            return random.choice(self.walkable_tiles)
-        return (0, 0)
+        for _ in range(50):
+            rx = random.randint(0, self.width - 1)
+            ry = random.randint(0, self.height - 1)
+            tile = self.terrain_map.get((rx, ry))
+            t_type = tile.terrain_type if tile else "grass"
+            if t_type not in ["water", "rock"]:
+                return (rx, ry)
+        return (self.width // 2, self.height // 2)
 
 
 class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
@@ -442,18 +490,34 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
         injected_events = []
         current_tick = request.tick
 
-        # Fetch rates from request, fallback to defaults if not set
+        # Fetch rates & Ollama settings from request, fallback to defaults if not set
         relic_spawn_rate = request.relic_spawn_rate if request.relic_spawn_rate > 0 else 80
         law_propose_rate = request.law_propose_rate if request.law_propose_rate > 0 else 140
         econ_event_rate = request.econ_event_rate if request.econ_event_rate > 0 else 100
         artifact_quality = request.artifact_quality if request.artifact_quality > 0 else 100
         quality_factor = artifact_quality / 100.0
 
+        ollama_enabled = getattr(request, 'ollama_enabled', True)
+        ollama_base_url = getattr(request, 'ollama_base_url', '') or os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+        ollama_model = getattr(request, 'ollama_model', '') or os.getenv('OLLAMA_MODEL', 'llama3.2:latest')
+        ollama_mode = getattr(request, 'ollama_mode', '') or os.getenv('OLLAMA_MODE', 'thoughts_only')
+        ollama_timeout_ms = getattr(request, 'ollama_timeout_ms', 0) or int(os.getenv('OLLAMA_TIMEOUT_MS', '8000'))
+
         # --- MANAGER A: Geistesleben (Culture & Spirit) ---
-        # Spawns an ancient spiritual relic (every relic_spawn_rate ticks)
         ticks_relic = current_tick - state_tracker.last_relic_tick
-        state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality modifier: {artifact_quality}%.")
         
+        # Ollama Reasoning Thought Generation for Manager A
+        if ollama_enabled and ollama_mode != "disabled" and current_tick % 15 == 0:
+            sys_a = "Du bist der Geistesleben-GameMaster (Geist, Kultur, Kunst) der Simulation IA3 SimWorld."
+            prompt_a = f"Tick #{current_tick}. Reliktrate: {ticks_relic}/{relic_spawn_rate}. Schreibe 1 kurzen Satz auf Deutsch über deinen geistigen Impuls."
+            ollama_thought_a = query_ollama(prompt_a, sys_a, ollama_base_url, ollama_model, ollama_timeout_ms)
+            if ollama_thought_a:
+                state_tracker.add_thought_a(f"🤖 [Ollama/{ollama_model}] {ollama_thought_a}")
+            else:
+                state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.")
+        else:
+            state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.")
+
         if current_tick > 0 and (current_tick == 10 or (ticks_relic >= relic_spawn_rate)):
             state_tracker.last_relic_tick = current_tick
             grass_tiles = [t for t in request.terrain_tiles if t.terrain_type == "grass" and t.object_type == ""]
@@ -472,10 +536,20 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
                 state_tracker.add_thought_a(f"Spawning relic of wisdom at ({target_tile.x}, {target_tile.y}) with amount {relic_amount} based on quality {artifact_quality}%.")
 
         # --- MANAGER B: Rechtssphäre (Laws & Rights) ---
-        # Propose a bill periodically (every law_propose_rate ticks)
         ticks_law = current_tick - state_tracker.last_law_tick
-        state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
         
+        # Ollama Reasoning Thought Generation for Manager B
+        if ollama_enabled and ollama_mode != "disabled" and current_tick % 15 == 0:
+            sys_b = "Du bist der Rechtssphäre-GameMaster (Tribunal, Rechte & Gesetze) der Simulation IA3 SimWorld."
+            prompt_b = f"Tick #{current_tick}. Aktive Gesetze: {state_tracker.active_laws}. Nächste Abstimmung in {law_propose_rate - ticks_law} Ticks. Schreibe 1 kurzen Satz auf Deutsch zur Rechtslage."
+            ollama_thought_b = query_ollama(prompt_b, sys_b, ollama_base_url, ollama_model, ollama_timeout_ms)
+            if ollama_thought_b:
+                state_tracker.add_thought_b(f"🤖 [Ollama/{ollama_model}] {ollama_thought_b}")
+            else:
+                state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
+        else:
+            state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
+
         if current_tick > 0 and (ticks_law >= law_propose_rate):
             state_tracker.last_law_tick = current_tick
             bills = [
@@ -483,7 +557,19 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
                 "Eco-Conservation Bill",
                 "Builder Subsidy Act"
             ]
-            state_tracker.proposed_law = random.choice(bills)
+            
+            chosen_bill = None
+            if ollama_enabled and ollama_mode == "full_decisions":
+                sys_b_dec = "Du bist der Rechtssphäre-GameMaster. Wähle exakt eines dieser Gesetze: 'Equitable Resource Sharing Act', 'Eco-Conservation Bill', 'Builder Subsidy Act'."
+                prompt_b_dec = "Antworte NUR mit dem exakten Gesetzesnamen ohne Erklärung."
+                llm_bill = query_ollama(prompt_b_dec, sys_b_dec, ollama_base_url, ollama_model, ollama_timeout_ms)
+                if llm_bill:
+                    for b in bills:
+                        if b.lower() in llm_bill.lower():
+                            chosen_bill = b
+                            break
+            
+            state_tracker.proposed_law = chosen_bill if chosen_bill else random.choice(bills)
             msg = f"⚖️ KI Rechtssphäre: Proposed the '{state_tracker.proposed_law}' at the courtroom tribunal! Voting will occur this evening."
             injected_events.append(msg)
             state_tracker.add_thought_b(f"Proposed law '{state_tracker.proposed_law}' to balance social spheres of AI agents.")
@@ -518,13 +604,37 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             state_tracker.proposed_law = ""
 
         # --- MANAGER C: Wirtschaftsleben (Economic Life & Physical Challenges) ---
-        # Trigger an economic/disaster event periodically (every econ_event_rate ticks)
         ticks_econ = current_tick - state_tracker.last_econ_tick
-        state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
         
+        # Ollama Reasoning Thought Generation for Manager C
+        if ollama_enabled and ollama_mode != "disabled" and current_tick % 15 == 0:
+            sys_c = "Du bist der Wirtschaftsleben-GameMaster (Wirtschaft, Natur & Ressourcen) der Simulation IA3 SimWorld."
+            prompt_c = f"Tick #{current_tick}. Event in {econ_event_rate - ticks_econ} Ticks. Schreibe 1 kurzen Satz auf Deutsch zur wirtschaftlichen Lage."
+            ollama_thought_c = query_ollama(prompt_c, sys_c, ollama_base_url, ollama_model, ollama_timeout_ms)
+            if ollama_thought_c:
+                state_tracker.add_thought_c(f"🤖 [Ollama/{ollama_model}] {ollama_thought_c}")
+            else:
+                state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
+        else:
+            state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
+
         if current_tick > 0 and (ticks_econ >= econ_event_rate):
             state_tracker.last_econ_tick = current_tick
-            econ_event = random.choice(["drought", "swarm", "harvest"])
+            
+            econ_event = None
+            if ollama_enabled and ollama_mode == "full_decisions":
+                sys_c_dec = "Du bist der Wirtschaftsleben-GameMaster. Wähle ein Umwelt/Wirtschaftsevent: 'drought', 'swarm' oder 'harvest'."
+                prompt_c_dec = "Antworte NUR mit dem Wort drought, swarm oder harvest."
+                llm_event = query_ollama(prompt_c_dec, sys_c_dec, ollama_base_url, ollama_model, ollama_timeout_ms)
+                if llm_event:
+                    for ev in ["drought", "swarm", "harvest"]:
+                        if ev in llm_event.lower():
+                            econ_event = ev
+                            break
+            
+            if not econ_event:
+                econ_event = random.choice(["drought", "swarm", "harvest"])
+
             if econ_event == "drought":
                 injected_events.append("🌾 KI Wirtschaftsleben: Drought! Lake waters are temporarily depleted and crops grow slower. ☀️")
                 water_tiles = [t for t in request.terrain_tiles if t.terrain_type == "water"]
@@ -634,10 +744,11 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
 
 
 def serve():
+    port = os.environ.get("PORT", "50051")
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     sim_pb2_grpc.add_AgentDecisionServiceServicer_to_server(AgentDecisionServicer(), server)
-    server.add_insecure_port("[::]:50051")
-    print("Mesa gRPC AgentBehaviorService running on :50051...")
+    server.add_insecure_port(f"[::]:{port}")
+    print(f"Mesa gRPC AgentBehaviorService running on :{port}...")
     server.start()
     server.wait_for_termination()
 

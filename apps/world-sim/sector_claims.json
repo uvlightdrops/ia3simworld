@@ -1,0 +1,42 @@
+[
+  {
+    "sectorX": 4,
+    "sectorY": 4,
+    "ownerNodeId": "ia3-3",
+    "ownerUrl": "",
+    "discoveredAt": 1,
+    "discoveredBy": "Nyx"
+  },
+  {
+    "sectorX": 5,
+    "sectorY": 4,
+    "ownerNodeId": "ia3-3",
+    "ownerUrl": "",
+    "discoveredAt": 2,
+    "discoveredBy": "Pico"
+  },
+  {
+    "sectorX": 4,
+    "sectorY": 5,
+    "ownerNodeId": "ia3-3",
+    "ownerUrl": "",
+    "discoveredAt": 4,
+    "discoveredBy": "Rook"
+  },
+  {
+    "sectorX": 5,
+    "sectorY": 5,
+    "ownerNodeId": "ia3-3",
+    "ownerUrl": "",
+    "discoveredAt": 56,
+    "discoveredBy": "Juno"
+  },
+  {
+    "sectorX": 0,
+    "sectorY": 0,
+    "ownerNodeId": "ia3-3",
+    "ownerUrl": "",
+    "discoveredAt": 0,
+    "discoveredBy": "init"
+  }
+]

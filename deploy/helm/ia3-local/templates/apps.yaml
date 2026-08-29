@@ -73,8 +73,8 @@ spec:
             - { name: WORLD_SIM_URL, value: "http://world-sim:8081" }
             - { name: PORT, value: "8080" }
             - { name: NODE_NAME, value: "{{ .Release.Namespace }}" }
-            {{- if eq .Release.Namespace "ia3-two" }}
-            - { name: REMOTE_GATEWAY_URL, value: "http://api-gateway.ia3:8080" }
+            {{- if not (or (eq .Release.Namespace "ia3-1") (eq .Release.Namespace "ia3")) }}
+            - { name: REMOTE_GATEWAY_URL, value: "http://api-gateway.ia3-1:8080" }
             {{- end }}
           ports:
             - { containerPort: 8080 }

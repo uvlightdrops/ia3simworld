@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "player:uvlightdrops",
+  "display_name": "flow",
+  "identity": {
+    "primary_id": "did:web:flow.example.org",
+    "aliases": ["acct:flow@example.org"]
+  },
+  "interests": [
+    {
+      "name": "Philosophy",
+      "qid": "Q5891",
+      "intensity": 90,
+      "tags": ["ethics", "epistemology"]
+    },
+    {
+      "name": "Knowledge Graphs",
+      "qid": "Q186588",
+      "intensity": 85,
+      "tags": ["rdf", "skos", "semantic-web"]
+    }
+  ],
+  "skills": [
+    {
+      "name": "Go programming",
+      "level": "expert",
+      "verified": false,
+      "tags": ["backend", "simulation"]
+    },
+    {
+      "name": "Writing",
+      "level": "advanced",
+      "verified": false,
+      "tags": ["documentation", "research"]
+    }
+  ],
+  "values": ["truth", "autonomy", "craftsmanship"],
+  "knowledge_domains": [
+    {
+      "domain_id": "software",
+      "label": "Software Engineering",
+      "block_count": 1200,
+      "artifact_count": 18,
+      "confidence": 0.92
+    }
+  ],
+  "persona": {
+    "innate": "curious, analytical, direct",
+    "learned": "knowledge engineer with broad interests",
+    "currently": "working on personal knowledge systems",
+    "communication_style": "concise and references-heavy"
+  },
+  "metadata": {
+    "source_system": "kicli",
+    "export_format": "json",
+    "exported_at": "2026-08-29T14:54:04Z"
+  }
+}

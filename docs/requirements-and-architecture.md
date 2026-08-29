@@ -54,11 +54,11 @@ Seit Projektbeginn wurden folgende Anforderungen an das System gestellt und impl
   - **Anpassbarer Startup-Fokus:** Die Karte berechnet ihre Containermaße beim Laden fehlerfrei und zentriert sich automatisch. Das Gitternetz (Grid) ist standardmäßig deaktiviert.
 
 ### Dezentrale Spielknoten & Multiplayer (Shared World)
-- **Minikube-Orchestrierung:** Über `make dev-up-two` lässt sich vollautomatisch eine zweite, eigenständige Simulationsinstanz im Namespace `ia3-two` auf Minikube hochfahren.
+- **Minikube-Orchestrierung:** Über `make dev-up-2` lässt sich vollautomatisch eine zweite, eigenständige Simulationsinstanz im Namespace `ia3-2` auf Minikube hochfahren.
 - **Konfliktfreies Port-Forwarding:** Port-Forwarding tunnelled Instanz 1 auf `:13000`/`:18080` und Instanz 2 auf `:13001`/`:18081`.
-- **Game-Node-Anzeige im Header:** Ein spezielles Element im Header zeigt die physische Knotentopologie unmissverständlich an (zeigt den eigenen Node-Namen zuerst und führt verbundene Master-Nodes dahinter an, z.B. `ia3, ia3-two`).
+- **Game-Node-Anzeige im Header:** Ein spezielles Element im Header zeigt die physische Knotentopologie unmissverständlich an (zeigt den eigenen Node-Namen zuerst und führt verbundene Master-Nodes dahinter an, z.B. `ia3, ia3-2`).
 - **Gemeinsame Welt (Shared World Mode):** Ein dezentraler Client-Modus spiegelt den gesamten State des Master-Gateway in Echtzeit im UI wider. 
-- **Sicherheits-Schutz für Sekundärknoten:** Auf unautorisierten Client-Nodes (ia3-two) werden kritische Steuerungselemente (Start, Pause, Regenerate, Szenario-Trigger) ausgeblendet, um Missbrauch zu unterbinden. Nur die master-autorisierte UI (ia3) behält die volle Simulationskontrolle.
+- **Sicherheits-Schutz für Sekundärknoten:** Auf unautorisierten Client-Nodes (ia3-2) werden kritische Steuerungselemente (Start, Pause, Regenerate, Szenario-Trigger) ausgeblendet, um Missbrauch zu unterbinden. Nur die master-autorisierte UI (ia3) behält die volle Simulationskontrolle.
 
 ### Entwickler-Tooling
 - **Zuverlässiges Orchestrierungs-Skripting:** Start- und Stop-Skripte verwalten alle lokalen Prozesse sauber und robust.

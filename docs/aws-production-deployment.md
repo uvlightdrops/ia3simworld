@@ -11,7 +11,7 @@ Unser System trennt strikt zwischen lokaler Entwicklung, simulierter Produktion 
 | Dimension | Dev (Lokaler Host) | Prod-Sim (Lokaler K8s / Minikube) | True Prod (AWS Cloud) |
 | :--- | :--- | :--- | :--- |
 | **Zweck** | Schnelle Code-Iteration & Debugging | Testen von Multiplayer-Sharding & K8s-Kompatibilität | Live-Betrieb für echte Spieler & AR-Clients |
-| **Laufzeit** | Nativer Host-Prozess (Go run, npm run dev, Python venv) | Containerisiert in Namespaces (`ia3`, `ia3-two`, `ia3-three`) | **Amazon EKS (Elastic Kubernetes Service)** oder Fargate |
+| **Laufzeit** | Nativer Host-Prozess (Go run, npm run dev, Python venv) | Containerisiert in Namespaces (`ia3`, `ia3-2`, `ia3-3`) | **Amazon EKS (Elastic Kubernetes Service)** oder Fargate |
 | **Datenbanken** | Lokaler Docker-Compose (Postgres, Redis) | In-Cluster Helm-Deployments (Postgres, Redis) | **AWS RDS (PostgreSQL)** & **Amazon ElastiCache (Redis)** |
 | **Netzwerk** | Direkte Ports (`:3000`, `:8080`, `:50051`) | Port-Forwarding von K8s (`13000`, `13001`, `13002`) | **AWS Application Load Balancer (ALB)** mit SSL (ACM) |
 | **Updates** | Sofortiges Live-Reloading | `./scripts/prod/update.sh` (lokaler Image-Rebuild) | **CI/CD Pipeline** (GitHub Actions -> ECR -> EKS Rollout) |
