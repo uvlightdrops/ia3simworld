@@ -45,6 +45,7 @@ export default function Home() {
   const [highlightCountdown, setHighlightCountdown] = useState<number>(0);
   const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [terrainLoaded, setTerrainLoaded] = useState(false);
 
   const LOCATION_TERRAINS = new Set([
     "home", "court", "market", "crops", "workshop", "mill", "quarry", "forge", "pottery", "storehouse"
@@ -134,7 +135,7 @@ export default function Home() {
 
   async function refresh() {
     try {
-      const res = await fetch(`${API}/api/state`);
+      const res = await fetch(`${API}/api/state?compact=true`);
       if (res.ok) {
         const nextState = await res.json();
         setState(nextState);
@@ -167,6 +168,25 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Failed to fetch settings", error);
+    }
+  }
+
+  // Load full terrain data when switching to map tab (lazy-load to avoid 291MB on every refresh)
+  async function loadTerrainData() {
+    if (terrainLoaded) return;
+    try {
+      const res = await fetch(`${API}/api/state`);
+      if (res.ok) {
+        const fullState = await res.json();
+        setState(prev => ({
+          ...prev,
+          terrain: fullState.terrain,
+          objects: fullState.objects,
+        }));
+        setTerrainLoaded(true);
+      }
+    } catch (error) {
+      console.error("Failed to load terrain data", error);
     }
   }
 
@@ -418,6 +438,13 @@ export default function Home() {
       }
     };
   }, []);
+
+  // Load terrain data when switching to map tab (lazy-load to reduce network traffic)
+  useEffect(() => {
+    if (activeTab === "map" && !terrainLoaded) {
+      void loadTerrainData();
+    }
+  }, [activeTab, terrainLoaded]);
 
   // Compute dynamic resource statistics - MEMOIZED to avoid O(N²) recalculation
   const { terrainStats, totalBerries, totalWaste } = useMemo(() => {
