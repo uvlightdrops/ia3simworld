@@ -439,9 +439,20 @@ func (s *Sim) handleControlRegenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Run terrain generation asynchronously so /state polling remains responsive.
 	go func() {
+		startTime := time.Now()
 		s.generateTerrain()
+		genDuration := time.Since(startTime)
+		
+		agentStart := time.Now()
 		s.seedAgents()
-		s.addEvent("🌋 [Weltgenerierung] Karte neu generiert. Alle alten Artefakte & Strukturen wurden zurückgesetzt.")
+		agentDuration := time.Since(agentStart)
+		
+		totalDuration := time.Since(startTime)
+		s.addEvent(fmt.Sprintf("🌋 [Weltgenerierung] Karte regeneriert in %.1fs (Gelände: %.1fs, Agenten: %.1fs). Alle Artefakte & Strukturen zurückgesetzt.",
+			totalDuration.Seconds(), genDuration.Seconds(), agentDuration.Seconds()))
+		
+		fmt.Printf("Regenerate timing: Terrain=%.1fs, Agents=%.1fs, Total=%.1fs\n", 
+			genDuration.Seconds(), agentDuration.Seconds(), totalDuration.Seconds())
 	}()
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"generating"}`))
