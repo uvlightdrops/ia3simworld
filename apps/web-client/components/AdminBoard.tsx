@@ -449,7 +449,7 @@ export function AdminBoard({
         </div>
 
         {/* Card 1: Simulation & Landscape Settings */}
-        {!connectedRemoteURL && ownNodeName === "ia3" && (
+        {!connectedRemoteURL && ownNodeName === "ia3-1" && (
           <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
             <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8 }}>
               ⚙️ Simulation & Landscape Settings
@@ -551,7 +551,7 @@ export function AdminBoard({
         )}
 
         {/* Card 2: Ollama KI Provider & GameMaster Settings */}
-        {!connectedRemoteURL && ownNodeName === "ia3" && (
+        {!connectedRemoteURL && ownNodeName === "ia3-1" && (
           <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
             <h3 style={{ margin: "0 0 14px 0", color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
               🦙 Ollama KI Provider & GameMaster KIs
@@ -624,7 +624,7 @@ export function AdminBoard({
         )}
 
         {/* Card 3: Collective Scenario Engine */}
-        {!connectedRemoteURL && ownNodeName === "ia3" && (
+        {!connectedRemoteURL && ownNodeName === "ia3-1" && (
           <div style={{ background: "#1e293b", padding: 20, borderRadius: 12, border: "1px solid #334155" }}>
             <h3 style={{ margin: "0 0 14px 0", color: "#eab308", borderBottom: "1px solid #334155", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
               🎭 Collective Scenario Engine
