@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strings"
 )
@@ -51,4 +52,49 @@ func (s *Sim) triggerScenario(w http.ResponseWriter, scenarioType string) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// Weekly congregation at nearest spiritual center
+func (s *Sim) triggerWeeklyCongregation(duration int) {
+	if len(s.spiritualCenters) == 0 {
+		// No spiritual centers, skip
+		return
+	}
+
+	// Pick a spiritual center (could be random or per-sector logic)
+	target := s.spiritualCenters[rand.Intn(len(s.spiritualCenters))]
+
+	s.congregationActive = true
+	s.congregationTarget = target
+	s.scenarioStartTick = s.tick.Load()
+	s.lastCongregationTick = s.tick.Load()
+
+	s.addEvent(fmt.Sprintf("🙏 [Weekly Congregation] All agents gather at the Spiritual Center (%d, %d) for community bonding!", target.X, target.Y))
+
+	for i := range s.agents {
+		a := &s.agents[i]
+		if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+			continue
+		}
+		a.Status = "Traveling to Weekly Congregation 🙏"
+		a.Target = target
+		a.History = append(a.History, fmt.Sprintf("Called to weekly congregation at spiritual center (%d, %d) at tick %d", target.X, target.Y, s.tick.Load()))
+	}
+}
+
+func (s *Sim) endWeeklyCongregation() {
+	s.congregationActive = false
+
+	s.addEvent(fmt.Sprintf("🏡 [Congregation Complete] Agents depart the spiritual center and return to their homes."))
+
+	for i := range s.agents {
+		a := &s.agents[i]
+		if strings.HasPrefix(a.ID, "human-") || a.Role == "Human Explorer" {
+			continue
+		}
+		// Return to settlement center (roughly)
+		a.Status = "Returning home from congregation 🏡"
+		a.Target = a.Position // Set target to current position first (to be overridden by pathfinding)
+		a.History = append(a.History, fmt.Sprintf("Ended weekly congregation and started return journey at tick %d", s.tick.Load()))
+	}
 }

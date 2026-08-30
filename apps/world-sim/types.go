@@ -35,6 +35,7 @@ const (
 	TerrainBridge     Terrain = "bridge"     // Brücke über Fluss (🌉)
 	TerrainGraveyard  Terrain = "graveyard"  // Friedhof (⚰️)
 	TerrainFarm       Terrain = "farm"       // Bauernhof-Gehöft (🏡🌾)
+	TerrainSpiritualCenter Terrain = "spiritual_center" // Gemeindezentrum (🕉️✨)
 )
 
 type Position struct {
@@ -336,6 +337,12 @@ type Sim struct {
 	scenarioTarget    Position
 	scenarioTicksLeft int
 	scenarioStartTick uint64
+
+	// Weekly Congregation at Spiritual Centers
+	spiritualCenters    []Position // all spiritual center locations in the world
+	congregationActive  bool
+	congregationTarget  Position
+	lastCongregationTick uint64
 
 	// Human Interactive Quests & NPCs Addressing Human
 	activeInteraction      *HumanInteraction

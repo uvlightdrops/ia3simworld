@@ -16,15 +16,17 @@ Alle erfolgreich umgesetzten Anforderungen wurden systematisch archiviert und in
 ### 1. Multiplayer & Dezentrales Sharding (🟡 In Progress)
 - **[ ] Föderierte Wissensgraphen:** Agenteninteressen und Kooperationsvereinbarungen werden als GraphLang-Kanten zwischen den P2P-Knoten kontinuierlich ausgetauscht.
 - **[ ] Dezentrale Brain-Nodes:** Spieler können eigene Python agent-service Instanzen bereitstellen, die die kollektive Berechnung von Agenten-Kognition unterstützen.
-
+- 
 ### 2. Augmented Reality (AR) & Real-World Geodaten-Integration (📋 Planned)
 - **[ ] Echtzeit-Datenkopplung Augsburg/Bayern:** Anbindung realer Höhendaten (DGM-Raster OpenData Bayern) und OSM-Vektordaten zur Generierung realgetreuer Sektoren.
 - **[ ] Geografisches Koordinatensystem:** WGS84 Lat/Lon → 2D Meter-Simulationsgitter Umrechnung zur Positionierung von Agenten an realen Standorten.
 
-### 3. GUI & UX Erweiterungen (📋 Planned)
+### 3a. GUI einfache Erweiterungen (🟡 In Progress)
+- [ ] Live Event Feed auf eigene Unterseite, im admin menu verlinken, von World map entfernen
+- 
+### 3b. GUI & UX Erweiterungen (📋 Planned)
 - **[ ] AR-Overlay im Web-Client:** Anzeige von Agenten, NPCs und Artefakten auf AR-fähiger Karte.
-- **[ ] Agenten-Details Box Struktur:** Permanente Sichtbarkeit mit Dummy-Einträgen wenn kein Agent ausgewählt.
-- **[ ] Inline Progress Feedback:** Fortschritts-Feedback direkt in der Simulation Box anzeigen.
+- **[X] Agenten-Details Box Struktur:** Permanente Sichtbarkeit mit Dummy-Einträgen wenn kein Agent ausgewählt.
 
 ### 4. World Expansion & Terraforming (📋 Future)
 - **[ ] Unendliche Sektoren:** Dynamische Generierung von 256×256 Sektoren, die nahtlos aneinander anschließen.
@@ -36,7 +38,11 @@ Alle erfolgreich umgesetzten Anforderungen wurden systematisch archiviert und in
 - **[ ] Spatial Indexing (Quadtree):** Agent-Lookups von O(N) auf O(log N) optimieren.
 - **[ ] Terrain Compression:** RLE oder Delta-Encoding für 80-90% Größenreduktion.
 - **[ ] Performance Dashboard:** Real-time Metriken (FPS, Latency, Memory, GC Pauses).
-
+- 
+### 6. World Generation & Settlement Expansion (📋 Planned)
+- [ ] Jeder node spawn fünf eigene Agenten, die damit ihren Heimatsektor zugewiesen bekommen. 
+- [ ] Jeder Hauptsektor eines nodes beherbergt einen Court, marketplace und eine spirituelles Gemeindezentrzm und drei ansiedlungen.
+- [ ] Jeden Sonntag kommen die Agenten alle zum Gemeindezentrum für drei Stunden.
 ---
 
 ## Implementation Status Summary

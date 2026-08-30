@@ -290,13 +290,24 @@ func (s *Sim) generateTerrain() {
 	}
 
 	// Settlement homestead circles (radius 4-6), plus a small farm on the outskirts
+	var lastR int
 	for i, sc := range settlementCenters {
 		r := 4 + i%3 // 4, 5, 6, 4
+		lastR = r
 		placeCircle(sc.X, sc.Y, r, TerrainHome, "homestead", 100)
 		farmX := wrap(sc.X+r+3, s.worldWidth)
 		if !isWater(farmX, sc.Y) {
 			placeRect(farmX, sc.Y, 3, 3, TerrainFarm, "farm", 100)
 		}
+	}
+
+	// Spiritual Centers (one per settlement, for weekly congregation)
+	for _, sc := range settlementCenters {
+		// Place spiritual center slightly offset from settlement center
+		spiritX := wrap(sc.X-lastR-5, s.worldWidth)
+		spiritY := wrap(sc.Y+8, s.worldHeight)
+		placeRect(spiritX, spiritY, 3, 3, TerrainSpiritualCenter, "spiritual_center", 100)
+		s.spiritualCenters = append(s.spiritualCenters, Position{X: spiritX, Y: spiritY})
 	}
 
 	// ── Phase 4: Infrastruktur ───────────────────────────────────────────────

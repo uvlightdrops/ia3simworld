@@ -19,6 +19,7 @@ func (s *Sim) registerHandlers() {
 	http.HandleFunc("/control/add-human-player", s.handleControlAddHumanPlayer)
 	http.HandleFunc("/control/update-human-target", s.handleControlUpdateHumanTarget)
 	http.HandleFunc("/control/trigger-scenario", s.handleControlTriggerScenario)
+	http.HandleFunc("/control/trigger-congregation", s.handleControlTriggerCongregation)
 	http.HandleFunc("/control/handover-agent", s.handleControlHandoverAgent)
 	http.HandleFunc("/control/respond-interaction", s.handleControlRespondInteraction)
 	http.HandleFunc("/control/update-ollama-settings", s.handleControlUpdateOllamaSettings)
@@ -300,6 +301,17 @@ func (s *Sim) handleControlTriggerScenario(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.triggerScenario(w, req.Scenario)
+}
+
+func (s *Sim) handleControlTriggerCongregation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.triggerWeeklyCongregation(168)  // 33.6 seconds for testing
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "Congregation triggered"})
 }
 
 func (s *Sim) handleControlHandoverAgent(w http.ResponseWriter, r *http.Request) {

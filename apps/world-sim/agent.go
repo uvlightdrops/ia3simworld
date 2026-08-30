@@ -11,9 +11,11 @@ import (
 )
 
 func (s *Sim) seedAgents() {
-	roles := []string{"Scout", "Builder", "Researcher", "Tracker"}
-	names := []string{"Aster", "Nyx", "Pico", "Sora", "Rook", "Vale", "Juno", "Iris"}
-	s.agents = make([]Agent, 0, len(names))
+	roles := []string{"Scout", "Builder", "Researcher", "Tracker", "Healer"}
+	names := []string{"Aster", "Nyx", "Pico", "Sora", "Rook"}
+
+	// Each node spawns exactly 5 agents tied to its homeland
+	s.agents = make([]Agent, 0, 5)
 
 	interests := [][]Interest{
 		{{"exploration", 80}, {"science", 40}},
@@ -21,25 +23,35 @@ func (s *Sim) seedAgents() {
 		{{"science", 90}, {"engineering", 60}},
 		{{"nature", 85}, {"exploration", 50}},
 		{{"engineering", 80}, {"safety", 40}},
-		{{"nature", 70}, {"socializing", 60}},
-		{{"art", 80}, {"science", 50}},
-		{{"safety", 90}, {"exploration", 70}},
 	}
 
-	// Spawn agents at settlement homesteads (round-robin distribution)
-	// If no settlements exist yet, fall back to world center
+	// Calculate node's primary sector boundaries
+	sectorSize := 256
+	sectorMinX := s.assignedSectorX * sectorSize
+	sectorMaxX := sectorMinX + sectorSize
+	sectorMinY := s.assignedSectorY * sectorSize
+	sectorMaxY := sectorMinY + sectorSize
+
+	// Spawn agents at settlement homesteads within this node's primary sector
 	var spawnCenters []Position
 	if len(s.settlementCenters) > 0 {
-		spawnCenters = s.settlementCenters
-	} else {
-		// Fallback: create fallback centers if settlements not yet generated
-		centerX := s.worldWidth / 2
-		centerY := s.worldHeight / 2
+		// Filter settlements to only those within node's assigned sector
+		for _, sc := range s.settlementCenters {
+			if sc.X >= sectorMinX && sc.X < sectorMaxX && sc.Y >= sectorMinY && sc.Y < sectorMaxY {
+				spawnCenters = append(spawnCenters, sc)
+			}
+		}
+	}
+
+	// Fallback: if no settlements in sector, use sector center
+	if len(spawnCenters) == 0 {
+		centerX := sectorMinX + sectorSize/2
+		centerY := sectorMinY + sectorSize/2
 		spawnCenters = []Position{{X: centerX, Y: centerY}}
 	}
 
 	for i, name := range names {
-		// Select homestead round-robin
+		// Select homestead round-robin from node's settlements
 		homesteadIdx := i % len(spawnCenters)
 		homestead := spawnCenters[homesteadIdx]
 
@@ -92,7 +104,7 @@ func (s *Sim) seedAgents() {
 		}
 
 		s.agents = append(s.agents, Agent{
-			ID:              fmt.Sprintf("agent-%d", i+1),
+			ID:              fmt.Sprintf("%s-agent-%d", s.nodeID, i+1),
 			Name:            name,
 			Role:            roles[i%len(roles)],
 			Mood:            "calm",

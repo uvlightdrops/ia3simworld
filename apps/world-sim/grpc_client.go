@@ -127,7 +127,7 @@ func (s *Sim) queryMesaAgentBehavior() {
 		for x := minX; x <= maxX; x++ {
 			t := s.terrain[y][x]
 			obj := s.objects[y][x]
-			if t == string(TerrainWater) || t == string(TerrainForest) || t == string(TerrainRock) || t == string(TerrainHome) || t == string(TerrainRoad) || t == string(TerrainCourt) || t == string(TerrainMarket) || t == string(TerrainCrops) || t == string(TerrainWorkshop) || t == string(TerrainMill) || t == string(TerrainQuarry) || t == string(TerrainForge) || t == string(TerrainPottery) || t == string(TerrainStorehouse) {
+			if t == string(TerrainWater) || t == string(TerrainForest) || t == string(TerrainRock) || t == string(TerrainHome) || t == string(TerrainRoad) || t == string(TerrainCourt) || t == string(TerrainMarket) || t == string(TerrainCrops) || t == string(TerrainWorkshop) || t == string(TerrainMill) || t == string(TerrainQuarry) || t == string(TerrainForge) || t == string(TerrainPottery) || t == string(TerrainStorehouse) || t == string(TerrainSpiritualCenter) {
 				pbTiles = append(pbTiles, &pb.TerrainTile{
 					X:            int32(x),
 					Y:            int32(y),

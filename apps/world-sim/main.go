@@ -147,6 +147,9 @@ func NewSim() *Sim {
 }
 
 func (s *Sim) runLoop(ctx context.Context) {
+	weeklyTicks := uint64(50400)  // 1 week at 200ms/tick
+	congregationDuration := 168    // 33.6 seconds for testing (scales to 3 hours IRL)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -155,6 +158,19 @@ func (s *Sim) runLoop(ctx context.Context) {
 			if s.running.Load() {
 				s.tick.Add(1)
 				currentTick := s.tick.Load()
+
+				// Check for weekly congregation trigger
+				if currentTick%weeklyTicks == 0 && currentTick > s.lastCongregationTick {
+					s.triggerWeeklyCongregation(congregationDuration)
+				}
+
+				// Update congregation state
+				if s.congregationActive {
+					ticksActive := int(currentTick) - int(s.scenarioStartTick)
+					if ticksActive > congregationDuration {
+						s.endWeeklyCongregation()
+					}
+				}
 
 				s.advanceAgents(currentTick)
 
