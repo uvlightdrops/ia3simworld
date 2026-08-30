@@ -1,0 +1,67 @@
+# ============================================================================
+# Simulation Profile: large-federated
+# ============================================================================
+# Multi-node federation setup for testing cross-node communication
+# 
+# Characteristics:
+# - 2560×2560 world (shared across 3 nodes)
+# - 200ms tick rate
+# - 5 agents per node (15 total)
+# - Each node gets assigned sector in 3×3 grid
+# - Full Ollama integration
+
+profile:
+  name: "large-federated"
+  description: "3-node federation - each node handles 256×256 sector"
+  based_on: ""
+  
+  world:
+    width: 2560           # Full 2560×2560 map
+    height: 2560
+    sector_size: 256      # Divided into 256×256 quads
+    tick_rate_ms: 200
+    agents_per_node: 5    # 5 agents per node = 15 total
+    terrain:
+      lakes_density: 0.28
+      berries_density: 0.25
+  
+  ui:
+    polling:
+      compact_interval_ms: 2000   # Slower polling for distributed system
+      full_state_interval_ms: 5000
+  
+  ai:
+    ollama:
+      enabled: true
+    agents:
+      decide_period_ticks: 10
+
+  node:
+    federation:
+      heartbeat_interval_ms: 5000
+
+# ============================================================================
+# Use this profile for:
+# ============================================================================
+# export PROFILE=large-federated
+# 
+# Start Node 1 (Master):
+#   export NODE__ID=ia3-1
+#   export NODE__ASSIGNED_SECTOR__X=0
+#   export NODE__ASSIGNED_SECTOR__Y=0
+#   ./scripts/dev/start.sh 1
+#
+# Start Node 2:
+#   export NODE__ID=ia3-2
+#   export NODE__ASSIGNED_SECTOR__X=1
+#   export NODE__ASSIGNED_SECTOR__Y=0
+#   ./scripts/dev/start.sh 2
+#
+# Start Node 3:
+#   export NODE__ID=ia3-3
+#   export NODE__ASSIGNED_SECTOR__X=2
+#   export NODE__ASSIGNED_SECTOR__Y=0
+#   ./scripts/dev/start.sh 3
+#
+# Startup per node: ~20-30 seconds
+# Good for: Federation testing, multi-node scenarios, cluster debugging

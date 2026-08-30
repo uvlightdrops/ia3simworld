@@ -1,0 +1,94 @@
+# ============================================================================
+# AI & Ollama Configuration
+# ============================================================================
+# Settings for LLM integration, agent service, and GameMaster
+
+ai:
+  # ========================================================================
+  # Ollama LLM Configuration
+  # ========================================================================
+  ollama:
+    # Enable/disable Ollama integration
+    enabled: true
+    
+    # Ollama service URL
+    base_url: "http://localhost:11434"
+    
+    # Model to use (must be pulled first: ollama pull llama3.2:latest)
+    model: "llama3.2:latest"
+    
+    # Request timeout (milliseconds)
+    timeout_ms: 8000
+    
+    # GameMaster mode: which domains use LLM
+    # gamemaster_all: Use LLM for all domains (economy, court, geistesleben)
+    # gamemaster_none: No LLM, use hardcoded rules
+    # gamemaster_selective: Only specific domains
+    mode: "gamemaster_all"
+  
+  # ========================================================================
+  # Agent Service (gRPC)
+  # ========================================================================
+  agents:
+    # How often agents decide their next action
+    decide_period_ticks: 10
+    
+    # gRPC service address
+    grpc_addr: "localhost:50051"
+    
+    # gRPC call timeout (milliseconds)
+    grpc_timeout_ms: 3000
+    
+    # Retry policy
+    grpc_retry_count: 2
+    grpc_retry_delay_ms: 100
+  
+  # ========================================================================
+  # Domain-Specific GameMaster Rates
+  # ========================================================================
+  # Controls how often GameMaster invokes Ollama for each domain
+  
+  game_master:
+    # Economy actions per 1000 ticks (relic/shop/trade actions)
+    economy_rate_per_1000_ticks: 10
+    
+    # Court actions per 1000 ticks (legal/justice actions)
+    court_rate_per_1000_ticks: 5
+    
+    # Geistesleben actions per 1000 ticks (spiritual/cultural actions)
+    geistesleben_rate_per_1000_ticks: 8
+    
+    # Quality bonus for artifact creation (higher = better items)
+    artifact_quality_boost: 1.2
+
+  # ========================================================================
+  # Logging & Debugging
+  # ========================================================================
+  logging:
+    # Log every Ollama call
+    log_ollama_calls: false
+    
+    # Log agent decisions
+    log_agent_decisions: false
+    
+    # Maximum log entries to keep in memory
+    max_log_entries: 10000
+
+# ============================================================================
+# EXAMPLES
+# ============================================================================
+#
+# Disable Ollama (testing):
+#   export AI__OLLAMA__ENABLED=false
+#
+# Use different model:
+#   export AI__OLLAMA__MODEL="mistral:latest"
+#
+# Longer timeout for slower systems:
+#   export AI__OLLAMA__TIMEOUT_MS=15000
+#
+# Use alternative agent service:
+#   export AI__AGENTS__GRPC_ADDR="agent-service:50051"
+#
+# Increase economy action rate:
+#   export AI__GAME_MASTER__ECONOMY_RATE_PER_1000_TICKS=50

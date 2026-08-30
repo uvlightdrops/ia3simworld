@@ -1,0 +1,119 @@
+# ============================================================================
+# UI/Frontend Configuration
+# ============================================================================
+# Controls polling intervals, rendering, and performance tuning
+# 
+# ⚠️ CRITICAL FOR UI RESPONSIVENESS - Review carefully
+# 
+# Persistence: ✅ Saved in config/defaults/ui.yaml
+# How to Apply: Restart web-client (next.js) - polling intervals take effect
+
+ui:
+  # ========================================================================
+  # Polling Intervals (CRITICAL FOR RESPONSIVENESS)
+  # ========================================================================
+  # Higher = Less network traffic, but slower UI updates
+  # Lower = More responsive, but more network load
+  
+  polling:
+    # Compact poll: only agents + events (small payload ~50KB)
+    compact_interval_ms: 1000     # 1 second (10 calls/10 sec)
+    
+    # Full state poll: terrain + agents + events (large payload ~500KB+)
+    full_state_interval_ms: 5000  # 5 seconds (2 calls/10 sec)
+    
+    # World generation poll (during map regeneration)
+    generation_poll_interval_ms: 500  # Poll every 500ms while generating
+    
+    # Admin data poll (stats, node status)
+    admin_interval_ms: 2000       # 2 seconds
+  
+  # ========================================================================
+  # Map Rendering
+  # ========================================================================
+  map:
+    # Viewport culling (render only visible tiles, not entire 2560×2560)
+    viewport_culling_enabled: false  # TODO: Implement (requires perf refactor)
+    
+    # Zoom level
+    default_zoom: 2
+    min_zoom: 0.5
+    max_zoom: 8
+    
+    # Tile rendering
+    tile_size_px: 32            # Pixels per tile on screen
+    max_agents_display: 100     # Don't render more than N agents (perf)
+    show_grid_overlay: false
+    
+    # Canvas/WebGL backend
+    use_webgl: false            # WebGL for large maps (future)
+  
+  # ========================================================================
+  # Animation & FPS
+  # ========================================================================
+  animation:
+    target_fps: 60              # Target frame rate
+    idle_pause_ms: 5000         # Pause polling if no activity for 5 sec
+    debounce_ms: 300            # Debounce rapid state changes
+  
+  # ========================================================================
+  # Component-Specific Settings
+  # ========================================================================
+  components:
+    admin_board:
+      # AdminBoard is heavy - controls whether to render certain sub-panels
+      render_event_feed: true   # Disable if slow (events now on /events page)
+      render_agent_list: true
+      render_stats: true
+      max_events_display: 50    # Limit event list length
+    
+    interactive_map:
+      # Map rendering - controls detail level
+      show_buildings: true
+      show_agents: true
+      show_terrain_detail: false  # Only show grass/water
+    
+    event_stream:
+      # Live events page polling
+      poll_interval_ms: 2000    # 2 seconds for /events page
+      max_events_buffer: 500    # Keep last 500 events in memory
+
+# ============================================================================
+# PERFORMANCE TUNING GUIDE
+# ============================================================================
+#
+# IF UI IS SLOW:
+#
+#   1. Increase polling intervals first (fastest fix):
+#      - compact_interval_ms: 5000   (5 sec instead of 1 sec)
+#      - full_state_interval_ms: 10000  (10 sec instead of 5 sec)
+#      Result: 80% reduction in network load
+#
+#   2. Disable heavy components:
+#      - render_event_feed: false
+#      - show_terrain_detail: false
+#      Result: Faster rendering, less CPU
+#
+#   3. Reduce max displays:
+#      - max_agents_display: 50  (down from 100)
+#      - max_events_display: 20  (down from 50)
+#      Result: Fewer DOM nodes to render
+#
+#   4. Use idle pause:
+#      - idle_pause_ms: 3000  (pause after 3 sec inactivity)
+#      Result: Battery saving on desktop, mobile-friendly
+#
+# IF UI IS UNRESPONSIVE (Not just slow):
+#
+#   Problem likely:
+#   - React re-render loops (AdminBoard re-renders entire page)
+#   - gRPC calls blocking render thread
+#   - Large state serialization (terrain array 2560×2560)
+#
+#   Solution:
+#   - Wrap components in React.memo()
+#   - Move gRPC calls to Web Worker
+#   - Implement viewport culling for map
+#   - Add memoization to selector functions
+#
+# ============================================================================

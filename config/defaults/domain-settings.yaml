@@ -1,0 +1,121 @@
+# ============================================================================
+# Domain Settings (Social Threefolding)
+# ============================================================================
+# Controls which domain actions are active: Economy, Court, Geistesleben
+# 
+# Modes:
+#   - "full"       : All actions enabled (default)
+#   - "restricted" : Only core actions, subject to quota/window
+#   - "off"        : Domain disabled (no actions possible)
+
+domains:
+  # ========================================================================
+  # Economy Domain (Production, Trade, Resources)
+  # ========================================================================
+  economy:
+    # Mode: full | restricted | off
+    mode: "full"
+    
+    # When mode=restricted: max actions per time window
+    quota_per_window: 20          # Max 20 economy actions
+    window_size_ticks: 100        # Per 100 ticks (20 seconds at 200ms tick)
+    
+    # When mode=restricted: only allow core actions (no optional/exotic ones)
+    core_actions_only: false
+    
+    # Core actions (always allowed if mode != off):
+    # - Gather resources
+    # - Basic farming
+    # - Simple crafting
+    # - Barter/basic trade
+    
+    # Optional/exotic actions (disabled in restricted mode):
+    # - Advanced crafting
+    # - Long-distance trade
+    # - Market speculation
+    
+    description: "Production, trade, and resource management"
+  
+  # ========================================================================
+  # Court Domain (Justice, Law, Governance)
+  # ========================================================================
+  court:
+    mode: "full"
+    quota_per_window: 10          # More restrictive than economy
+    window_size_ticks: 100
+    core_actions_only: false
+    
+    # Core actions:
+    # - Report disputes
+    # - Attend hearings
+    # - Basic legal agreements
+    
+    # Optional actions:
+    # - Complex contracts
+    # - Political maneuvering
+    # - Law creation/reform
+    
+    description: "Justice, law, and governance"
+  
+  # ========================================================================
+  # Geistesleben Domain (Culture, Spirituality, Knowledge)
+  # ========================================================================
+  geistesleben:
+    mode: "full"
+    quota_per_window: 10
+    window_size_ticks: 100
+    core_actions_only: false
+    
+    # Core actions:
+    # - Attend spiritual gatherings
+    # - Study/learn skills
+    # - Cultural participation
+    # - Weekly congregation
+    
+    # Optional actions:
+    # - Create art/music
+    # - Teach others
+    # - Spiritual leadership
+    # - Create new traditions
+    
+    description: "Culture, spirituality, and intellectual life"
+
+# ============================================================================
+# Quota/Throttling System Explanation
+# ============================================================================
+#
+# Example: Economy restricted to 20 actions per 100 ticks
+#
+#   Tick 0:    [action] [action] ... (18 more) = 20 actions used
+#   Tick 50:   [blocked] [blocked] ... = quota exhausted
+#   Tick 100:  Window resets → [action] [action] ... = quota available again
+#
+# This prevents agents from spamming actions while allowing normal gameplay.
+#
+# System benefits:
+# - Reduces server load (controllable action rate)
+# - Encourages thoughtful play (limited resources/actions)
+# - Prevents exploitation (quota prevents infinite loops)
+# - Easy to tune (just change quota_per_window and window_size_ticks)
+
+# ============================================================================
+# EXAMPLES
+# ============================================================================
+#
+# Disable economy to reduce server load:
+#   export DOMAINS__ECONOMY__MODE=off
+#
+# Restrict court to 5 actions per 100 ticks:
+#   export DOMAINS__COURT__QUOTA_PER_WINDOW=5
+#
+# Only core actions in all domains:
+#   export DOMAINS__ECONOMY__CORE_ACTIONS_ONLY=true
+#   export DOMAINS__COURT__CORE_ACTIONS_ONLY=true
+#   export DOMAINS__GEISTESLEBEN__CORE_ACTIONS_ONLY=true
+#
+# Relax economy during testing:
+#   export DOMAINS__ECONOMY__MODE=full
+#   export DOMAINS__ECONOMY__QUOTA_PER_WINDOW=100
+#
+# These can be changed at runtime via UI (not yet implemented) once
+# we add the /admin/config POST endpoint.

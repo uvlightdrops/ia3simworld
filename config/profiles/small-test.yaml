@@ -1,0 +1,35 @@
+# ============================================================================
+# Simulation Profile: small-test
+# ============================================================================
+# Quick test world for unit tests and rapid iteration
+# 
+# Characteristics:
+# - 512×512 world (16x smaller than standard)
+# - 50ms tick rate (4x faster)
+# - 2 agents (minimal simulation)
+# - Ollama disabled (no LLM for testing)
+
+profile:
+  name: "small-test"
+  description: "Quick test world - 512×512, fast ticks, minimal agents"
+  based_on: ""
+  
+  world:
+    width: 512
+    height: 512
+    tick_rate_ms: 50
+    agents_per_node: 2
+    terrain:
+      lakes_density: 0.28
+      berries_density: 0.25
+    settlements:
+      count: 1
+  
+  ui:
+    polling:
+      compact_interval_ms: 2000
+      full_state_interval_ms: 5000
+  
+  ai:
+    ollama:
+      enabled: false

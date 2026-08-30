@@ -1,0 +1,102 @@
+# ============================================================================
+# Port Configuration - SINGLE SOURCE OF TRUTH
+# ============================================================================
+# All service ports centralized here. Never hardcode ports in code again.
+# 
+# Usage:
+#   Go: cfg.Ports.APIGateway
+#   TS: process.env.NEXT_PUBLIC_API_GATEWAY_PORT
+#   Python: config['ports']['agent_service_grpc']
+
+ports:
+  # ========================================================================
+  # Direct Host Development (Non-Kubernetes)
+  # ========================================================================
+  # Used when running ./scripts/dev/start.sh [N]
+  # Node numbering starts at 1
+  
+  direct_host:
+    # Node 1 (ia3-1) - Master
+    node_1:
+      api_gateway: 17080
+      world_sim: 17081
+      agent_service_grpc: 50051
+      web_client: 12000
+    
+    # Node 2 (ia3-2) - Federated
+    node_2:
+      api_gateway: 17082
+      world_sim: 17083
+      agent_service_grpc: 50052
+      web_client: 12001
+    
+    # Node 3 (ia3-3) - Federated
+    node_3:
+      api_gateway: 17084
+      world_sim: 17085
+      agent_service_grpc: 50053
+      web_client: 12002
+
+  # ========================================================================
+  # Minikube Kubernetes Mode
+  # ========================================================================
+  # Used when deploying via Helm: make dev-up, make dev-up-2, etc.
+  # Pod-to-pod communication via ClusterIP service names
+  # External access via kubectl port-forward
+  
+  minikube:
+    # Node 1 (ia3-1, namespace=ia3) - Master
+    node_1:
+      api_gateway_external: 18080
+      web_client_external: 13000
+      api_gateway_internal: "api-gateway:8080"  # K8s service name
+      world_sim_internal: "world-sim:9090"
+      agent_service_internal: "agent-service:50051"
+    
+    # Node 2 (ia3-2, namespace=ia3-2)
+    node_2:
+      api_gateway_external: 18081
+      web_client_external: 13001
+      api_gateway_internal: "api-gateway:8080"
+      world_sim_internal: "world-sim:9090"
+      agent_service_internal: "agent-service:50051"
+    
+    # Node 3 (ia3-3, namespace=ia3-3)
+    node_3:
+      api_gateway_external: 18082
+      web_client_external: 13002
+      api_gateway_internal: "api-gateway:8080"
+      world_sim_internal: "world-sim:9090"
+      agent_service_internal: "agent-service:50051"
+
+  # ========================================================================
+  # Shared Infrastructure
+  # ========================================================================
+  # Used by all nodes for local/containerized databases
+  
+  infrastructure:
+    postgres: 5432          # PostgreSQL (via docker-compose or K8s)
+    redis: 6379             # Redis (via docker-compose or K8s)
+    ollama: 11434           # Ollama LLM service (if running locally)
+    jaeger: 16686           # Distributed tracing (future)
+    prometheus: 9090        # Metrics (future)
+
+  # ========================================================================
+  # Reference: How to use
+  # ========================================================================
+  # Direct Host (Node 1):
+  #   export API_GATEWAY_PORT=17080
+  #   export WORLD_SIM_PORT=17081
+  #   export AGENT_SERVICE_GRPC=50051
+  #   export WEB_CLIENT_PORT=12000
+  #
+  # Direct Host (Node 2):
+  #   export NODE_NUMBER=2
+  #   export API_GATEWAY_PORT=17082
+  #   export WORLD_SIM_PORT=17083
+  #   export AGENT_SERVICE_GRPC=50052
+  #   export WEB_CLIENT_PORT=12001
+  #
+  # Minikube (Namespace ia3):
+  #   kubectl port-forward -n ia3 svc/api-gateway 18080:8080
+  #   kubectl port-forward -n ia3 svc/web-client 13000:3000

@@ -1,0 +1,14 @@
+# ============================================================================
+# Configuration - Git Ignore File
+# ============================================================================
+# Persistent runtime state goes in state/, not version control
+# Stage overlays are environment-specific, not shared
+
+# Stage-specific configuration (environment secrets)
+stages/
+
+# Optional: Local-only profiles (e.g., personal testing)
+profiles/local/
+
+# Runtime state (should never be in version control)
+../state/

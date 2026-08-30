@@ -9,6 +9,7 @@ import { AboutModal } from "../components/AboutModal";
 import { FooterBar } from "../components/FooterBar";
 import { MapManagementBoard } from "../components/MapManagementBoard";
 import { useI18n } from "../context/I18nContext";
+import { loadUIConfig } from "../lib/config";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:17080";
 
@@ -55,6 +56,10 @@ export default function Home() {
   const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [terrainLoaded, setTerrainLoaded] = useState(false);
+  
+  // Service connectivity tracking
+  const [apiConnected, setApiConnected] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const LOCATION_TERRAINS = new Set([
     "home", "court", "market", "crops", "workshop", "mill", "quarry", "forge", "pottery", "storehouse"
@@ -382,6 +387,8 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const uiConfig = loadUIConfig();
+    
     refresh();
     fetchSettings();
     fetchMultiplayer();
@@ -432,7 +439,7 @@ export default function Home() {
       if (socket.readyState !== WebSocket.OPEN) {
         void refresh();
       }
-    }, 1000);
+    }, uiConfig.polling.compact_interval_ms);
 
     // Fast-poll during terrain generation so progress overlay updates smoothly
     // ONLY run when generating to avoid unnecessary network traffic
@@ -735,8 +742,14 @@ export default function Home() {
               {connectedRemoteURL ? "🌍 Shared World" : "🌍 Local Host"}
             </strong>
           </div>
-          <div style={{ minWidth: 140, boxSizing: "border-box" }}>
-            <div style={headerLabel}>World Sectors</div>
+          <div style={{ minWidth: 120, boxSizing: "border-box" }}>
+            <div style={headerLabel}>Profile</div>
+            <strong style={{ color: "#60a5fa", display: "block", whiteSpace: "nowrap", fontSize: 12 }}>
+              {process.env.NEXT_PUBLIC_PROFILE || "standard"}
+            </strong>
+          </div>
+            <div style={{ minWidth: 140, boxSizing: "border-box" }}>
+            <div style={headerLabel}>Sect.</div>
             <strong style={{ color: "#10b981", display: "block", whiteSpace: "nowrap", fontSize: 12 }}>
               {state.discoveredSectors && state.discoveredSectors.length > 0
                 ? state.discoveredSectors.sort().join(", ")

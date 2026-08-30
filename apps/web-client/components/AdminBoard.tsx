@@ -22,7 +22,7 @@ type ManagerSettings = {
   ollamaTimeoutMs: number;
 };
 
-export function AdminBoard({
+export const AdminBoard = React.memo(function AdminBoard({
   state,
   settings,
   updateSettings,
@@ -974,4 +974,4 @@ export function AdminBoard({
       )}
     </div>
   );
-}
+});  // React.memo prevents re-renders unless props change

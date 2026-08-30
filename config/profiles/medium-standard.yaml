@@ -1,0 +1,49 @@
+# ============================================================================
+# Simulation Profile: medium-standard
+# ============================================================================
+# Default world configuration for development
+# 
+# Characteristics:
+# - 2560×2560 world (standard)
+# - 200ms tick rate (5 ticks/sec)
+# - 5 agents per node (default)
+# - Ollama enabled
+# - Balanced polling
+
+profile:
+  name: "medium-standard"
+  description: "Standard development world - 2560×2560, 5 agents"
+  based_on: ""
+  
+  world:
+    width: 2560
+    height: 2560
+    tick_rate_ms: 200
+    agents_per_node: 5
+    terrain:
+      river_width: 3
+      lakes_density: 0.28
+      berries_density: 0.25
+      forest_density: 0.35
+    settlements:
+      count: 4
+  
+  ui:
+    polling:
+      compact_interval_ms: 1000
+      full_state_interval_ms: 5000
+  
+  ai:
+    ollama:
+      enabled: true
+    agents:
+      decide_period_ticks: 10
+
+# ============================================================================
+# Use this profile for:
+# ============================================================================
+# export PROFILE=medium-standard (or omit, it's default)
+# ./scripts/dev/start.sh 1
+# 
+# Startup: ~20-30 seconds
+# Good for: General development, feature testing, normal gameplay

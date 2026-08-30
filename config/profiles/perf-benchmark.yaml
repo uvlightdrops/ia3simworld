@@ -1,0 +1,71 @@
+# ============================================================================
+# Simulation Profile: perf-benchmark
+# ============================================================================
+# Performance/load testing profile
+# 
+# Characteristics:
+# - 2560×2560 world
+# - 50ms tick rate (20 ticks/sec - maximum)
+# - 50 agents per node (heavy load)
+# - All domains enabled for stress testing
+# - No Ollama (to isolate simulation performance)
+
+profile:
+  name: "perf-benchmark"
+  description: "Load test - 50 agents, fast ticks, all domains active"
+  based_on: ""
+  
+  world:
+    width: 2560
+    height: 2560
+    tick_rate_ms: 50        # Maximum speed
+    agents_per_node: 50     # Heavy load
+    terrain:
+      lakes_density: 0.28
+      berries_density: 0.25
+  
+  ui:
+    polling:
+      compact_interval_ms: 5000   # Less frequent polling during test
+      full_state_interval_ms: 10000
+  
+  ai:
+    ollama:
+      enabled: false        # Disable to isolate sim performance
+    agents:
+      decide_period_ticks: 5  # Fast decisions
+
+  domains:
+    economy:
+      quota_per_window: 100   # High quota for stress test
+    court:
+      quota_per_window: 50
+    geistesleben:
+      quota_per_window: 50
+
+# ============================================================================
+# Use this profile for:
+# ============================================================================
+# export PROFILE=perf-benchmark
+# ./scripts/dev/start.sh 1
+# 
+# Startup: ~30-40 seconds
+# CPU: Will be HIGH (50 agents, 20 ticks/sec)
+# Memory: ~800MB - 1GB
+#
+# Good for:
+# - Performance testing
+# - Finding bottlenecks
+# - Stress testing federation
+# - Measuring max agents/ticks
+#
+# Monitor with:
+# - top/htop: Watch CPU/memory usage
+# - Chrome DevTools: Network tab for polling payloads
+# - React DevTools: Profiler for UI render times
+#
+# Benchmark metrics to record:
+# - Avg tick time
+# - Network payload size per poll
+# - UI responsiveness (time from click to response)
+# - Memory usage over time

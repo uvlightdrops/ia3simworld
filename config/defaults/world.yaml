@@ -1,0 +1,94 @@
+# ============================================================================
+# World Generation & Simulation Configuration
+# ============================================================================
+# Controls world size, terrain generation, agent spawning, and tick rate
+# 
+# Persistence: ✅ Saved in config/defaults/world.yaml
+# Recompile needed? NO - restart sim with new config
+
+world:
+  # ========================================================================
+  # Map Dimensions
+  # ========================================================================
+  width: 2560
+  height: 2560
+  
+  # ========================================================================
+  # Sector Division (Federation)
+  # ========================================================================
+  # Each sector is a 256×256 quad assigned to one node
+  sector_size: 256
+  # Sectors per row: 2560 / 256 = 10
+  # Total sectors: 10 × 10 = 100 possible
+  
+  # ========================================================================
+  # Terrain Generation
+  # ========================================================================
+  terrain:
+    # River network density
+    river_width: 3
+    river_roughness: 0.4
+    
+    # Lakes and water features
+    lakes_density: 0.28        # % of world covered in water
+    
+    # Flora generation
+    berries_density: 0.25      # % tiles with berry bushes
+    forest_density: 0.35       # % tiles with trees
+    
+    # Terrain thresholds (noise-based)
+    grass_threshold: 0.4       # Below this: water
+    forest_threshold: 0.7      # Above this: forest
+  
+  # ========================================================================
+  # Settlements & Architecture
+  # ========================================================================
+  settlements:
+    count: 4                   # Number of towns on the map
+    min_distance: 70           # Minimum distance between settlements (tiles)
+    homestead_radius: 4        # Building cluster radius
+    spiritual_centers: 1       # Spiritual centers PER settlement
+    spiritual_center_size: 3   # 3×3 tiles per spiritual center
+  
+  # ========================================================================
+  # Simulation Timing
+  # ========================================================================
+  tick_rate_ms: 200            # Milliseconds between ticks
+                               # 200ms = 5 ticks/second
+                               # 50ms = 20 ticks/second
+  
+  ticks_per_game_hour: 50      # 200ms * 50 = 10 seconds = 1 game hour
+  ticks_per_game_week: 50400   # ~2.8 hours real-time
+  
+  # ========================================================================
+  # Agent Spawning (Per Node)
+  # ========================================================================
+  agents_per_node: 5           # Each node spawns 5 agents
+  agent_start_behavior: "idle" # idle | wander | explore
+  
+  # ========================================================================
+  # Behavioral Constants
+  # ========================================================================
+  behavior:
+    move_distance_per_tick: 1  # Tiles moved per tick
+    decide_period_ticks: 10    # How often agents reconsider action
+    congregation_duration_ticks: 168  # Weekly congregation length
+    congregation_interval_ticks: 50400  # Weekly (7 game days)
+
+# ============================================================================
+# Example: How to change settings
+# ============================================================================
+#
+# For TESTING (quick iteration):
+#   cp config/fixtures/small-test.yaml config/dev/config.yaml
+#   # Then restart: world-sim uses small 512×512 world
+#
+# For PERFORMANCE (large world):
+#   Change tick_rate_ms: 50  (faster)
+#   Change agents_per_node: 50  (more agents)
+#   # Requires restart - memory/CPU impact
+#
+# For FEDERATION (multi-node):
+#   Each node loads its own sector assignment from config/defaults/node.yaml
+#   This world.yaml is shared across all nodes
+#   sector_size: 256 must match across all nodes

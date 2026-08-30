@@ -2,14 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/knadh/koanf/v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
 )
 
 var (
@@ -21,6 +27,48 @@ var (
 	remoteGatewayURL   string
 	remoteGatewayMutex sync.RWMutex
 )
+
+func loadConfig() *koanf.Koanf {
+	k := koanf.New(".")
+
+	// 1. Load defaults from config/defaults/
+	defaults := []string{
+		"../../config/defaults/ports.yaml",
+		"../../config/defaults/node.yaml",
+	}
+	for _, f := range defaults {
+		if err := k.Load(file.Provider(f), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Failed to load %s: %v", f, err)
+		}
+	}
+
+	// 2. Load profile override (if PROFILE env var set)
+	if profile := os.Getenv("PROFILE"); profile != "" {
+		profileFile := fmt.Sprintf("../../config/profiles/%s.yaml", profile)
+		if err := k.Load(file.Provider(profileFile), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Profile %s not found: %v", profile, err)
+		} else {
+			log.Printf("[config] Loaded profile: %s", profile)
+		}
+	}
+
+	// 3. Load stage override (if STAGE env var set)
+	if stage := os.Getenv("STAGE"); stage != "" {
+		stageFile := fmt.Sprintf("../../config/stages/%s/config.yaml", stage)
+		if err := k.Load(file.Provider(stageFile), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Stage %s not found: %v", stage, err)
+		} else {
+			log.Printf("[config] Loaded stage: %s", stage)
+		}
+	}
+
+	// 4. Load environment variables (highest priority)
+	k.Load(env.Provider("", ".", func(s string) string {
+		return strings.ToLower(s)
+	}), nil)
+
+	return k
+}
 
 func broadcastControlCommand(endpoint string, r *http.Request) {
 	if r.URL.Query().Get("broadcast") == "false" {
@@ -57,8 +105,20 @@ func broadcastControlCommand(endpoint string, r *http.Request) {
 }
 
 func main() {
-	world := getenv("WORLD_SIM_URL", "http://localhost:17081")
-	port := getenv("PORT", "17080")
+	cfg := loadConfig()
+
+	// Load world-sim URL and port from config
+	world := cfg.String("ports.world_sim_url")
+	if world == "" {
+		world = getenv("WORLD_SIM_URL", "http://localhost:17081")
+	}
+	
+	port := cfg.String("ports.api_gateway")
+	if port == "" {
+		port = getenv("PORT", "17080")
+	}
+
+	log.Printf("[gateway] Config loaded: World SIM URL: %s, API Gateway Port: %s", world, port)
 
 	// Pre-initialize remoteGatewayURL if provided in environment (e.g. for automatic K8s peering)
 	if envRemote := os.Getenv("REMOTE_GATEWAY_URL"); envRemote != "" {

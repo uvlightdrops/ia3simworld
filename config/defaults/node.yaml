@@ -1,0 +1,74 @@
+# ============================================================================
+# Node Identity & Federation Configuration
+# ============================================================================
+# Each node loads this to identify itself in the federation
+# 
+# Override with ENV vars: NODE__ID=ia3-2, NODE__ASSIGNED_SECTOR__X=1, etc.
+
+node:
+  # ========================================================================
+  # Node Identity
+  # ========================================================================
+  id: "ia3-1"              # Unique node ID (ia3-1, ia3-2, ia3-3, etc.)
+  display_name: "Master"   # Human-readable name
+  
+  # ========================================================================
+  # Federation Setup
+  # ========================================================================
+  federation:
+    # Master URL - empty means this node IS the master
+    master_url: ""
+    
+    # Master node ID (for reference, used in logging/debugging)
+    master_node_id: "ia3-1"
+    
+    # Heartbeat/health check
+    heartbeat_interval_ms: 10000  # Send heartbeat every 10 seconds
+    heartbeat_timeout_ms: 30000   # Assume dead after 30 sec no response
+  
+  # ========================================================================
+  # Sector Assignment (Federation Geography)
+  # ========================================================================
+  # This node is responsible for this 256×256 sector
+  assigned_sector:
+    x: 0
+    y: 0
+  
+  # Discovered sectors (populated during gameplay when agents cross borders)
+  # This is runtime state, NOT persisted in this config
+  discovered_sectors: []  # Populated by runtime
+  
+  # ========================================================================
+  # Clustering Configuration
+  # ========================================================================
+  cluster:
+    # Max agents this node can spawn
+    max_agents: 1000
+    
+    # How to share state with other nodes
+    sync_method: "broadcast"  # broadcast | pull | push
+    
+    # Sync interval (how often to sync state with master)
+    sync_interval_ms: 5000
+
+# ============================================================================
+# EXAMPLES
+# ============================================================================
+#
+# For Node 1 (Master):
+#   export NODE__ID=ia3-1
+#   export NODE__FEDERATION__MASTER_URL=""  # Empty = this is master
+#   export NODE__ASSIGNED_SECTOR__X=0
+#   export NODE__ASSIGNED_SECTOR__Y=0
+#
+# For Node 2 (Federated):
+#   export NODE__ID=ia3-2
+#   export NODE__FEDERATION__MASTER_URL="http://ia3-1:17080"
+#   export NODE__ASSIGNED_SECTOR__X=1
+#   export NODE__ASSIGNED_SECTOR__Y=0
+#
+# For Node 3 (Federated):
+#   export NODE__ID=ia3-3
+#   export NODE__FEDERATION__MASTER_URL="http://ia3-1:17080"
+#   export NODE__ASSIGNED_SECTOR__X=0
+#   export NODE__ASSIGNED_SECTOR__Y=1

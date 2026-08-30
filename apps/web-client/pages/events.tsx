@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { WorldState, initialState } from "../types/sim";
+import { loadUIConfig } from "../lib/config";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:17080";
 
@@ -10,6 +11,8 @@ export default function EventsPage() {
   const eventFeedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const uiConfig = loadUIConfig();
+    
     const fetchState = async () => {
       try {
         const res = await fetch(`${API}/api/state`);
@@ -22,7 +25,7 @@ export default function EventsPage() {
     };
 
     fetchState();
-    const interval = setInterval(fetchState, 1000);
+    const interval = setInterval(fetchState, uiConfig.polling.compact_interval_ms);
     return () => clearInterval(interval);
   }, []);
 

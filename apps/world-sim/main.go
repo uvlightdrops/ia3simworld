@@ -7,28 +7,92 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/knadh/koanf/v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
 )
 
+func loadConfig() *koanf.Koanf {
+	k := koanf.New(".")
+
+	// 1. Load defaults from config/defaults/
+	defaults := []string{
+		"../../config/defaults/ports.yaml",
+		"../../config/defaults/world.yaml",
+		"../../config/defaults/ai.yaml",
+		"../../config/defaults/node.yaml",
+	}
+	for _, f := range defaults {
+		if err := k.Load(file.Provider(f), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Failed to load %s: %v", f, err)
+		}
+	}
+
+	// 2. Load profile override (if PROFILE env var set)
+	if profile := os.Getenv("PROFILE"); profile != "" {
+		profileFile := fmt.Sprintf("../../config/profiles/%s.yaml", profile)
+		if err := k.Load(file.Provider(profileFile), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Profile %s not found: %v", profile, err)
+		} else {
+			log.Printf("[config] Loaded profile: %s", profile)
+		}
+	}
+
+	// 3. Load stage override (if STAGE env var set)
+	if stage := os.Getenv("STAGE"); stage != "" {
+		stageFile := fmt.Sprintf("../../config/stages/%s/config.yaml", stage)
+		if err := k.Load(file.Provider(stageFile), yaml.Parser()); err != nil {
+			log.Printf("[config] Warning: Stage %s not found: %v", stage, err)
+		} else {
+			log.Printf("[config] Loaded stage: %s", stage)
+		}
+	}
+
+	// 4. Load environment variables (highest priority)
+	// Koanf env provider maps underscore-separated env vars like:
+	// WORLD__TICK_RATE_MS -> world.tick_rate_ms
+	k.Load(env.Provider("", ".", func(s string) string {
+		// Simple mapper: WORLD__TICK_RATE_MS -> world.tick_rate_ms
+		return strings.ToLower(s)
+	}), nil)
+
+	return k
+}
+
 func NewSim() *Sim {
-	worldW := 2560
-	worldH := 2560
+	cfg := loadConfig()
 
-	if envW := os.Getenv("WORLD_WIDTH"); envW != "" {
-		if w, err := strconv.Atoi(envW); err == nil && w > 0 {
-			worldW = w
-		}
+	// World dimensions (from config or defaults)
+	worldW := cfg.Int("world.width")
+	if worldW == 0 {
+		worldW = 2560
 	}
-	if envH := os.Getenv("WORLD_HEIGHT"); envH != "" {
-		if h, err := strconv.Atoi(envH); err == nil && h > 0 {
-			worldH = h
-		}
+	worldH := cfg.Int("world.height")
+	if worldH == 0 {
+		worldH = 2560
 	}
 
-	lakesD := 0.28
-	berriesD := 0.25
+	// Terrain density
+	lakesD := cfg.Float64("world.lakes_density")
+	if lakesD == 0 {
+		lakesD = 0.28
+	}
+	berriesD := cfg.Float64("world.berries_density")
+	if berriesD == 0 {
+		berriesD = 0.25
+	}
+
+	// Tick rate (in milliseconds)
+	tickRateMs := cfg.Int("world.tick_rate_ms")
+	if tickRateMs == 0 {
+		tickRateMs = 200
+	}
+	tickDuration := time.Duration(tickRateMs) * time.Millisecond
 
 	numSectorsX := worldW / 256
 	numSectorsY := worldH / 256
@@ -46,12 +110,31 @@ func NewSim() *Sim {
 		}
 	}
 
+	// Ollama settings from config
+	ollamaEnabled := cfg.Bool("ai.ollama.enabled")
+	ollamaBaseURL := cfg.String("ai.ollama.base_url")
+	if ollamaBaseURL == "" {
+		ollamaBaseURL = "http://localhost:11434"
+	}
+	ollamaModel := cfg.String("ai.ollama.model")
+	if ollamaModel == "" {
+		ollamaModel = "llama3.2:latest"
+	}
+	ollamaMode := cfg.String("ai.ollama.mode")
+	if ollamaMode == "" {
+		ollamaMode = "gamemaster_all"
+	}
+	ollamaTimeoutMs := cfg.Int("ai.ollama.timeout_ms")
+	if ollamaTimeoutMs == 0 {
+		ollamaTimeoutMs = 8000
+	}
+
 	s := &Sim{
 		worldWidth:             worldW,
 		worldHeight:            worldH,
 		lakesDensity:           lakesD,
 		berriesDensity:         berriesD,
-		tickDuration:           200 * time.Millisecond,
+		tickDuration:           tickDuration,
 		recentEvents:           make([]string, 0, 50),
 		sectors:                sectorsMap,
 		minSectorX:             0,
@@ -60,39 +143,28 @@ func NewSim() *Sim {
 		maxSectorY:             numSectorsY - 1,
 		deepInteractionAllowed: make(map[string]bool),
 		autoAnswerMode:         "manual",
-		ollamaEnabled:          true,
-		ollamaBaseURL:          "http://localhost:11434",
-		ollamaModel:            "llama3.2:latest",
-		ollamaMode:             "gamemaster_all",
-		ollamaTimeoutMs:        8000,
+		ollamaEnabled:          ollamaEnabled,
+		ollamaBaseURL:          ollamaBaseURL,
+		ollamaModel:            ollamaModel,
+		ollamaMode:             ollamaMode,
+		ollamaTimeoutMs:        ollamaTimeoutMs,
 		createdAt:              time.Now().UTC(),
 		sectorClaims:           make(map[Position]SectorClaim),
 	}
 
-	// Node identity and master federation setup
-	s.nodeID = getenv("NODE_ID", getenv("NODE_NAME", "ia3-1"))
-	s.masterURL = os.Getenv("MASTER_URL") // empty = this node is the master
+	// Node identity and federation (from config)
+	s.nodeID = cfg.String("node.id")
+	if s.nodeID == "" {
+		s.nodeID = getenv("NODE_ID", getenv("NODE_NAME", "ia3-1"))
+	}
+	s.masterURL = cfg.String("node.master_url")
+	if s.masterURL == "" {
+		s.masterURL = os.Getenv("MASTER_URL")
+	}
 	s.isMaster = s.masterURL == ""
-	// Default assigned sector for this node (overridden by master assignment)
-	s.assignedSectorX = 0
-	s.assignedSectorY = 0
-	if sx := os.Getenv("SECTOR_X"); sx != "" {
-		if v, err := strconv.Atoi(sx); err == nil {
-			s.assignedSectorX = v
-		}
-	}
-	if sy := os.Getenv("SECTOR_Y"); sy != "" {
-		if v, err := strconv.Atoi(sy); err == nil {
-			s.assignedSectorY = v
-		}
-	}
 
-	if envURL := os.Getenv("OLLAMA_BASE_URL"); envURL != "" {
-		s.ollamaBaseURL = envURL
-	}
-	if envModel := os.Getenv("OLLAMA_MODEL"); envModel != "" {
-		s.ollamaModel = envModel
-	}
+	s.assignedSectorX = cfg.Int("node.assigned_sector_x")
+	s.assignedSectorY = cfg.Int("node.assigned_sector_y")
 
 	var tax TaxonomyData
 	if err := json.Unmarshal(embeddedTaxonomy, &tax); err == nil {
@@ -126,7 +198,7 @@ func NewSim() *Sim {
 		SectorX:      s.assignedSectorX,
 		SectorY:      s.assignedSectorY,
 		OwnerNodeID:  s.nodeID,
-		OwnerURL:     getenv("OWN_URL", ""),
+		OwnerURL:     getenv("OWN_URL", cfg.String("node.own_url")),
 		DiscoveredAt: 0,
 		DiscoveredBy: "init",
 	}
@@ -135,13 +207,15 @@ func NewSim() *Sim {
 	s.objects = make([][]WorldObject, worldH)
 	for y := 0; y < worldH; y++ {
 		s.terrain[y] = make([]string, worldW)
-		s.objects[y] = make([]WorldObject, worldW)
+		s.objects[y] = make([]WorldObject, worldH)
 	}
 
 	s.generateTerrain()
 	s.seedAgents()
 	s.running.Store(true)
 
+	log.Printf("[sim] Config loaded: World %dx%d, Tick %dms, Ollama: %v, NodeID: %s",
+		worldW, worldH, tickRateMs, s.ollamaEnabled, s.nodeID)
 	s.addEvent(fmt.Sprintf("World simulation initialized with %dx%d grid (%dx%d sectors = %d total sectors) and %d agents.", worldW, worldH, numSectorsX, numSectorsY, numSectorsX*numSectorsY, len(s.agents)))
 	return s
 }
@@ -205,7 +279,13 @@ func main() {
 
 	sim.registerHandlers()
 
-	port := getenv("PORT", "8081")
+	// Load port from config
+	cfg := loadConfig()
+	port := cfg.String("ports.world_sim")
+	if port == "" {
+		port = getenv("PORT", "8081")
+	}
+	
 	log.Printf("world-sim listening on :%s ...", port)
 
 	// Register at master node asynchronously after HTTP server is ready
