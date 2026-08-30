@@ -100,7 +100,7 @@ export function AdminBoard({
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
       {/* Admin Subnav Header */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, borderBottom: "1px solid #334155", paddingBottom: 10 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, borderBottom: "1px solid #334155", paddingBottom: 10, flexWrap: "wrap" }}>
         <button
           onClick={() => setActiveTab && setActiveTab("admin")}
           style={{
@@ -150,6 +150,23 @@ export function AdminBoard({
         >
           👥 Agentenprofile & Inspektor
         </button>
+        <a
+          href="/events"
+          style={{
+            background: "#1e293b",
+            color: "#cbd5e1",
+            border: "1px solid #334155",
+            borderRadius: 8,
+            padding: "8px 14px",
+            fontWeight: "bold",
+            fontSize: 13,
+            cursor: "pointer",
+            textDecoration: "none",
+            display: "inline-block"
+          }}
+        >
+          📡 Live Event Feed
+        </a>
       </div>
 
       {/* Intelligent CSS Grid Layout for Admin Control Cards */}

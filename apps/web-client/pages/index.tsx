@@ -1415,24 +1415,6 @@ export default function Home() {
               })()}
             </div>
 
-            {/* Live Event Feed (Scrolling) */}
-            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
-              <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
-                Live Event Feed
-              </h3>
-              <div style={{ height: 260, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                {state.events && state.events.length > 0 ? (
-                  state.events.map((event, idx) => (
-                    <div key={idx} style={{ padding: "4px 8px", background: "#0f172a", borderRadius: 4, borderLeft: "3px solid #38bdf8", color: "#cbd5e1" }}>
-                      {event}
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", marginTop: 40 }}>Waiting for simulation events...</div>
-                )}
-              </div>
-            </div>
-
             {/* 🎮 Playable Character (Mitmach-Modus) - Moved to bottom */}
             <div style={{ background: "#1e293b", border: "1px dashed #eab308", borderRadius: 12, padding: 12 }}>
               <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#eab308", borderBottom: "1px solid #334155", paddingBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1488,24 +1470,6 @@ export default function Home() {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 3. Live Event Feed (Scrolling) */}
-            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
-              <h3 style={{ margin: "0 0 8px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
-                Live Event Feed
-              </h3>
-              <div style={{ height: 360, overflowY: "auto", fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                {state.events && state.events.length > 0 ? (
-                  state.events.map((event, idx) => (
-                    <div key={idx} style={{ padding: "4px 8px", background: "#0f172a", borderRadius: 4, borderLeft: "3px solid #38bdf8", color: "#cbd5e1" }}>
-                      {event}
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", marginTop: 40 }}>Waiting for simulation events...</div>
-                )}
-              </div>
             </div>
 
           </aside>
