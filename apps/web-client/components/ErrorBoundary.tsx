@@ -130,88 +130,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     return (
       <>
-        <ServiceStatusBar status={this.state.serviceStatus} />
         {this.props.children}
       </>
     );
   }
-}
-
-/**
- * Service Status Bar - shows at top of UI if any service is down
- */
-function ServiceStatusBar(props: {
-  status: {
-    apiGateway: "connected" | "disconnected" | "checking";
-    worldSim: "connected" | "disconnected" | "checking";
-  };
-}) {
-  const isOK =
-    props.status.apiGateway === "connected" &&
-    props.status.worldSim === "connected";
-
-  if (isOK) {
-    return null; // No status bar needed
-  }
-
-  return (
-    <div
-      style={{
-        ...styles.statusBar,
-        backgroundColor:
-          props.status.apiGateway === "disconnected"
-            ? "#f44336"
-            : "#ff9800",
-      }}
-    >
-      <div style={styles.statusContent}>
-        <span style={{ fontWeight: "bold" }}>⚠️ Service Status</span>
-        <span style={{ marginLeft: "20px" }}>
-          API Gateway:{" "}
-          <StatusDot status={props.status.apiGateway} />
-        </span>
-        <span style={{ marginLeft: "20px" }}>
-          World Sim:{" "}
-          <StatusDot status={props.status.worldSim} />
-        </span>
-        <span style={{ marginLeft: "auto", fontSize: "0.85em" }}>
-          Retrying in 5 seconds...
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatusDot(props: {
-  status: "connected" | "disconnected" | "checking";
-}) {
-  const colors = {
-    connected: "#4caf50",
-    disconnected: "#f44336",
-    checking: "#ff9800",
-  };
-
-  const labels = {
-    connected: "✓",
-    disconnected: "✗",
-    checking: "⟳",
-  };
-
-  return (
-    <span
-      title={props.status}
-      style={{
-        display: "inline-block",
-        width: "12px",
-        height: "12px",
-        borderRadius: "50%",
-        backgroundColor: colors[props.status],
-        marginLeft: "5px",
-      }}
-    >
-      {labels[props.status]}
-    </span>
-  );
 }
 
 const styles = {
@@ -249,18 +171,5 @@ const styles = {
     borderRadius: "4px",
     cursor: "pointer",
     fontSize: "16px",
-  },
-  statusBar: {
-    padding: "12px 20px",
-    color: "white",
-    boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-    position: "sticky" as const,
-    top: 0,
-    zIndex: 1000,
-  },
-  statusContent: {
-    display: "flex",
-    alignItems: "center",
-    fontSize: "14px",
   },
 };

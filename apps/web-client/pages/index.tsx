@@ -736,12 +736,6 @@ export default function Home() {
         </div>
 
         <div style={{ display: "flex", gap: 16, textAlign: "right", flexShrink: 0 }}>
-          <div style={{ minWidth: 125, boxSizing: "border-box" }}>
-            <div style={headerLabel}>Multiplayer Mode</div>
-            <strong style={{ color: connectedRemoteURL ? "#10b981" : "#94a3b8", display: "block", whiteSpace: "nowrap" }}>
-              {connectedRemoteURL ? "🌍 Shared World" : "🌍 Local Host"}
-            </strong>
-          </div>
           <div style={{ minWidth: 120, boxSizing: "border-box" }}>
             <div style={headerLabel}>Profile</div>
             <strong style={{ color: "#60a5fa", display: "block", whiteSpace: "nowrap", fontSize: 12 }}>
