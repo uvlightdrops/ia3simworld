@@ -14,6 +14,15 @@ import (
 
 func (s *Sim) queryMesaAgentBehavior() {
 	currentTick := s.tick.Load()
+	if len(s.agents) == 0 {
+		return
+	}
+	if s.grpcDecisionIntervalMin > 0 {
+		last := s.lastGrpcDecisionTick.Load()
+		if last > 0 && currentTick-last < uint64(s.grpcDecisionIntervalMin) {
+			return
+		}
+	}
 
 	// Check court and geistesleben domain gates before calling the expensive agent service
 	courtAllowed := s.domainActionAllowed("court", currentTick)
@@ -21,13 +30,15 @@ func (s *Sim) queryMesaAgentBehavior() {
 	if !courtAllowed && !geistAllowed {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)  // Increased from 2s to 5s for robustness
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Increased from 2s to 5s for robustness
 	defer cancel()
 
+	s.grpcCallCount.Add(1)
+	s.lastGrpcDecisionTick.Store(currentTick)
 	grpcAddr := getenv("AGENT_GRPC_ADDR", "localhost:50051")
 	// Increase max message size to 64MB to handle full world terrain data
-	conn, err := grpc.DialContext(ctx, grpcAddr, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()), 
+	conn, err := grpc.DialContext(ctx, grpcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(64*1024*1024), // 64 MB receive
@@ -85,14 +96,14 @@ func (s *Sim) queryMesaAgentBehavior() {
 	// ── Phase 2: Viewport-Based Terrain Filtering ──────────────────────────
 	// Only send terrain tiles within agent vision/influence radius
 	// This reduces message size from 58MB to ~5-10MB
-	
+
 	var pbTiles []*pb.TerrainTile
-	
+
 	// Calculate bounding box from agent positions (with margin for context)
 	const terrainMargin = 100 // Include tiles 100 cells beyond agents
 	minX, maxX := s.worldWidth, -1
 	minY, maxY := s.worldHeight, -1
-	
+
 	for _, a := range s.agents {
 		if a.Position.X-terrainMargin < minX {
 			minX = a.Position.X - terrainMargin
@@ -107,7 +118,7 @@ func (s *Sim) queryMesaAgentBehavior() {
 			maxY = a.Position.Y + terrainMargin
 		}
 	}
-	
+
 	// Clamp to world bounds
 	if minX < 0 {
 		minX = 0
@@ -121,10 +132,15 @@ func (s *Sim) queryMesaAgentBehavior() {
 	if maxY >= s.worldHeight {
 		maxY = s.worldHeight - 1
 	}
-	
-	// Collect tiles in viewport
+
+	// Collect tiles in viewport, but cap the payload to keep the agent decision request bounded.
+	// Large 2560x2560 worlds otherwise create enormous gRPC payloads and timeouts.
+	maxTiles := 8000
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
+			if len(pbTiles) >= maxTiles {
+				break
+			}
 			t := s.terrain[y][x]
 			obj := s.objects[y][x]
 			if t == string(TerrainWater) || t == string(TerrainForest) || t == string(TerrainRock) || t == string(TerrainHome) || t == string(TerrainRoad) || t == string(TerrainCourt) || t == string(TerrainMarket) || t == string(TerrainCrops) || t == string(TerrainWorkshop) || t == string(TerrainMill) || t == string(TerrainQuarry) || t == string(TerrainForge) || t == string(TerrainPottery) || t == string(TerrainStorehouse) || t == string(TerrainSpiritualCenter) {
@@ -136,6 +152,9 @@ func (s *Sim) queryMesaAgentBehavior() {
 					ObjectAmount: int32(obj.Amount),
 				})
 			}
+		}
+		if len(pbTiles) >= maxTiles {
+			break
 		}
 	}
 

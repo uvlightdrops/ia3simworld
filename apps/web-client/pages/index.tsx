@@ -24,6 +24,7 @@ function nodeSectorDisplay(nodeId: string | undefined): string {
 
 export default function Home() {
   const { lang, setLang, t } = useI18n();
+  const uiConfig = useMemo(() => loadUIConfig(), []);
   const [state, setState] = useState<WorldState>(initialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedAdminAgent, setSelectedAdminAgent] = useState<string | null>(null);
@@ -36,21 +37,30 @@ export default function Home() {
     lawProposeRate: 140,
     econEventRate: 100,
     artifactQuality: 100,
-    ollamaEnabled: true,
-    ollamaBaseUrl: "http://localhost:11434",
-    ollamaModel: "llama3.2:latest",
-    ollamaMode: "thoughts_only",
-    ollamaTimeoutMs: 8000
+    ollamaEnabled: uiConfig.ollama_enabled ?? true,
+    ollamaBaseUrl: uiConfig.ollama_base_url ?? "http://localhost:11434",
+    ollamaModel: uiConfig.ollama_model ?? "llama3.2:latest",
+    ollamaMode: uiConfig.ollama_mode ?? "thoughts_only",
+    ollamaTimeoutMs: uiConfig.ollama_timeout_ms ?? 8000,
   });
   const [remoteURL, setRemoteURL] = useState("");
   const [connectedRemoteURL, setConnectedRemoteURL] = useState("");
   const [hasReplicaNode, setHasReplicaNode] = useState(false);
   const [ownNodeName, setOwnNodeName] = useState("ia3-1");
+  const [perfMetrics, setPerfMetrics] = useState({
+    lastTickDurationMs: 0,
+    lastStateSnapshotMs: 0,
+    totalGrpcCalls: 0,
+    stateRequests: 0,
+    memoryUsedMb: 0,
+  });
+  const [apiLatencyMs, setApiLatencyMs] = useState(0);
 
   const [playerNameInput, setPlayerNameInput] = useState("");
   const [isJoiningHuman, setIsJoiningHuman] = useState(false);
 
   const [hoveredTile, setHoveredTile] = useState<{ x: number; y: number } | null>(null);
+  const [focusTile, setFocusTile] = useState<{ x: number; y: number } | null>(null);
   const [highlightedTerrain, setHighlightedTerrain] = useState<string | null>(null);
   const [highlightCountdown, setHighlightCountdown] = useState<number>(0);
   const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -62,10 +72,11 @@ export default function Home() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const LOCATION_TERRAINS = new Set([
-    "home", "court", "market", "crops", "workshop", "mill", "quarry", "forge", "pottery", "storehouse"
+    "home", "court", "market", "crops", "workshop", "mill", "quarry", "forge", "pottery", "storehouse",
+    "temple", "well", "bridge", "graveyard", "farm", "spiritual_center"
   ]);
 
-  function handleLegendClick(terrain: string) {
+  function handleLegendClick(terrain: string, coords?: { x: number; y: number } | null) {
     if (!LOCATION_TERRAINS.has(terrain)) return;
 
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -73,6 +84,7 @@ export default function Home() {
 
     setHighlightedTerrain(terrain);
     setHighlightCountdown(5);
+    setFocusTile(coords ?? null);
 
     const startTime = Date.now();
     countdownIntervalRef.current = setInterval(() => {
@@ -87,6 +99,7 @@ export default function Home() {
     highlightTimerRef.current = setTimeout(() => {
       setHighlightedTerrain(null);
       setHighlightCountdown(0);
+      setFocusTile(null);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     }, 5000);
   }
@@ -148,10 +161,13 @@ export default function Home() {
   }, [activeTab, state]);
 
   async function refresh() {
+    const startedAt = performance.now();
     try {
-      const res = await fetch(`${API}/api/state?compact=true`);
+      const res = await fetch(`${API}/api/state?compact=true&delta=true`);
       if (res.ok) {
         const nextState = await res.json();
+        const latencyMs = Math.round(performance.now() - startedAt);
+        const hasTerrainPayload = Array.isArray(nextState.terrain) && nextState.terrain.length > 0 && Array.isArray(nextState.terrain[0]);
         setState(prev => ({
           ...prev,
           running: nextState.running,
@@ -159,14 +175,41 @@ export default function Home() {
           tickRateMs: nextState.tickRateMs,
           totalAgents: nextState.totalAgents,
           agents: nextState.agents,
+          settlements: nextState.settlements ?? prev.settlements,
           events: nextState.events,
           lastUpdated: nextState.lastUpdated,
+          worldSize: hasTerrainPayload
+            ? {
+                width: nextState.terrain[0]?.length ?? prev.worldSize.width ?? 0,
+                height: nextState.terrain.length ?? prev.worldSize.height ?? 0,
+              }
+            : prev.worldSize,
+          terrain: hasTerrainPayload ? nextState.terrain : prev.terrain,
+          objects: hasTerrainPayload ? (nextState.objects ?? prev.objects) : prev.objects,
           generating: nextState.generating ?? prev.generating,
           genProgress: nextState.genProgress ?? prev.genProgress,
+          genPhase: nextState.genPhase ?? prev.genPhase,
+          lastGeneratedAt: nextState.lastGeneratedAt ?? prev.lastGeneratedAt,
           grassPolicy: nextState.grassPolicy ?? prev.grassPolicy,
           forestPolicy: nextState.forestPolicy ?? prev.forestPolicy,
           activeLaws: nextState.activeLaws ?? prev.activeLaws,
+          performance: nextState.performance ?? prev.performance,
         }));
+        if (nextState.terrain && nextState.terrain.length > 0) {
+          setTerrainLoaded(true);
+        }
+        setPerfMetrics((prev) => ({
+          ...prev,
+          lastTickDurationMs: nextState.performance?.lastTickDurationMs ?? prev.lastTickDurationMs,
+          lastStateSnapshotMs: nextState.performance?.lastStateSnapshotMs ?? prev.lastStateSnapshotMs,
+          totalGrpcCalls: nextState.performance?.totalGrpcCalls ?? prev.totalGrpcCalls,
+          stateRequests: nextState.performance?.stateRequests ?? prev.stateRequests,
+          memoryUsedMb: nextState.performance?.memoryUsedMb ?? prev.memoryUsedMb,
+        }));
+        if (typeof window !== "undefined" && "memory" in performance) {
+          const mem = (performance as any).memory;
+          setPerfMetrics((prev) => ({ ...prev, memoryUsedMb: Math.round(mem.usedJSHeapSize / (1024 * 1024)) }));
+        }
         if (nextState.relicSpawnRate) {
           setManagerSettings(prev => ({
             ...prev,
@@ -180,6 +223,12 @@ export default function Home() {
             ollamaMode: nextState.ollamaMode ?? prev.ollamaMode,
             ollamaTimeoutMs: nextState.ollamaTimeoutMs ?? prev.ollamaTimeoutMs,
           }));
+        }
+        setApiLatencyMs(latencyMs);
+        const profileName = (process.env.NEXT_PUBLIC_PROFILE || process.env.PROFILE || "").toLowerCase();
+        const perfEnabled = process.env.NEXT_PUBLIC_LOG_PERF === "1" || profileName === "perf" || profileName === "perf-benchmark";
+        if (perfEnabled && latencyMs > 250) {
+          console.warn("[perf] state poll slow", { latencyMs, tick: nextState.tick, compact: true, totalAgents: nextState.totalAgents });
         }
       }
     } catch (error) {
@@ -203,19 +252,52 @@ export default function Home() {
   async function loadTerrainData() {
     if (terrainLoaded) return;
     try {
-      const res = await fetch(`${API}/api/state`);
+      const worldW = state.worldSize?.width && state.worldSize.width > 0 ? state.worldSize.width : (uiConfig.world_width ?? 2560);
+      const worldH = state.worldSize?.height && state.worldSize.height > 0 ? state.worldSize.height : (uiConfig.world_height ?? 2560);
+
+      let viewportX = Math.floor(worldW / 2);
+      let viewportY = Math.floor(worldH / 2);
+      let viewportRadius = Math.max(256, Math.min(Math.min(worldW, worldH) / 2, 700));
+
+      if (state.settlements && state.settlements.length > 0) {
+        const avgX = state.settlements.reduce((sum, s) => sum + s.center.x, 0) / state.settlements.length;
+        const avgY = state.settlements.reduce((sum, s) => sum + s.center.y, 0) / state.settlements.length;
+        viewportX = Math.floor(avgX);
+        viewportY = Math.floor(avgY);
+        const farthest = state.settlements.reduce((max, s) => {
+          const dx = s.center.x - viewportX;
+          const dy = s.center.y - viewportY;
+          return Math.max(max, Math.hypot(dx, dy));
+        }, 0);
+        viewportRadius = Math.max(220, Math.min(Math.min(worldW, worldH) / 2, Math.ceil(farthest + 120)));
+      }
+
+      const res = await fetch(`${API}/api/state?viewport_x=${viewportX}&viewport_y=${viewportY}&viewport_radius=${viewportRadius}`);
       if (res.ok) {
-        const fullState = await res.json();
+        const viewportState = await res.json();
+        const terrain = viewportState.terrain ?? [];
+        const hasTerrain = Array.isArray(terrain) && terrain.length > 0 && terrain[0]?.length > 0;
+        const resolvedWorldSize = hasTerrain
+          ? { width: terrain[0].length, height: terrain.length }
+          : (
+              viewportState.worldSize && viewportState.worldSize.width > 0 && viewportState.worldSize.height > 0
+                ? { width: viewportState.worldSize.width, height: viewportState.worldSize.height }
+                : { width: state.worldSize.width > 0 ? state.worldSize.width : worldW, height: state.worldSize.height > 0 ? state.worldSize.height : worldH }
+            );
+
         setState(prev => ({
           ...prev,
-          worldSize: fullState.worldSize,
-          terrain: fullState.terrain,
-          objects: fullState.objects,
+          settlements: viewportState.settlements ?? prev.settlements,
+          worldSize: resolvedWorldSize,
+          terrain: hasTerrain ? terrain : prev.terrain,
+          objects: hasTerrain ? (viewportState.objects ?? prev.objects) : prev.objects,
         }));
-        setTerrainLoaded(true);
+        if (hasTerrain) {
+          setTerrainLoaded(true);
+        }
       }
     } catch (error) {
-      console.error("Failed to load terrain data", error);
+      console.error("Failed to load terrain viewport data", error);
     }
   }
 
@@ -283,6 +365,7 @@ export default function Home() {
   }
 
   async function regenerate() {
+    setTerrainLoaded(false);
     try {
       await fetch(`${API}/api/control/regenerate`, { method: "POST" });
       await refresh();
@@ -421,7 +504,22 @@ export default function Home() {
     socket.onmessage = (event) => {
       try {
         const nextState = JSON.parse(event.data);
-        setState(nextState);
+        setState((prev) => {
+          const hasTerrainPayload = Array.isArray(nextState.terrain) && nextState.terrain.length > 0 && Array.isArray(nextState.terrain[0]);
+          const hasObjectPayload = Array.isArray(nextState.objects) && nextState.objects.length > 0 && Array.isArray(nextState.objects[0]);
+          return {
+            ...prev,
+            ...nextState,
+            worldSize: nextState.worldSize && nextState.worldSize.width > 0 && nextState.worldSize.height > 0
+              ? nextState.worldSize
+              : prev.worldSize,
+            terrain: hasTerrainPayload ? nextState.terrain : prev.terrain,
+            objects: hasObjectPayload ? nextState.objects : prev.objects,
+            settlements: nextState.settlements ?? prev.settlements,
+            agents: nextState.agents ?? prev.agents,
+            events: nextState.events ?? prev.events,
+          };
+        });
       } catch (err) {
         console.error("Failed to parse socket state:", err);
       }
@@ -441,55 +539,101 @@ export default function Home() {
       }
     }, uiConfig.polling.compact_interval_ms);
 
-    // Fast-poll during terrain generation so progress overlay updates smoothly
-    // ONLY run when generating to avoid unnecessary network traffic
-    let genPollInterval: NodeJS.Timeout | null = null;
-    const setupGenPoll = () => {
-      if (!genPollInterval && state.generating) {
-        genPollInterval = setInterval(() => {
-          if (state.generating) {
-            void refresh();
-          } else {
-            if (genPollInterval) {
-              clearInterval(genPollInterval);
-              genPollInterval = null;
-            }
-          }
-        }, 300);
-      }
-    };
-    
-    setupGenPoll();
-
+    // Fast-poll during terrain generation so progress updates remain visible.
     return () => {
       socket.close();
       clearInterval(fallbackPoll);
-      if (genPollInterval) {
-        clearInterval(genPollInterval);
-      }
     };
   }, []);
 
-  // Load terrain data when switching to map tab (lazy-load to reduce network traffic)
   useEffect(() => {
-    if (activeTab === "map" && !terrainLoaded) {
+    if (!state.generating) return;
+
+    const genPollInterval = setInterval(() => {
+      void refresh();
+    }, 250);
+
+    return () => clearInterval(genPollInterval);
+  }, [state.generating]);
+
+  useEffect(() => {
+    if (activeTab !== "map") return;
+    if (state.generating) {
+      setTerrainLoaded(false);
+      return;
+    }
+    if (!terrainLoaded) {
       void loadTerrainData();
     }
-  }, [activeTab, terrainLoaded]);
+  }, [activeTab, state.generating, terrainLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "map" && !state.generating && !terrainLoaded) {
+      void loadTerrainData();
+    }
+  }, [state.worldSize, activeTab, state.generating, terrainLoaded]);
 
   // Compute dynamic resource statistics - MEMOIZED to avoid O(N²) recalculation
-  const { terrainStats, totalBerries, totalWaste } = useMemo(() => {
+  const { terrainStats, totalBerries, totalWaste, locationEntries } = useMemo(() => {
     const stats = { grass: 0, water: 0, forest: 0, rock: 0, home: 0, road: 0 };
+    const locationMap = new Map<string, { count: number; coords: Array<{ x: number; y: number }> }>();
+    for (const terrain of Array.from(LOCATION_TERRAINS)) {
+      locationMap.set(terrain, { count: 0, coords: [] });
+    }
     let berries = 0;
     let waste = 0;
 
     if (state.terrain) {
+      const visited = new Set<string>();
       for (let y = 0; y < state.terrain.length; y++) {
         for (let x = 0; x < state.terrain[y].length; x++) {
           const t = state.terrain[y][x];
           if (t in stats) {
             stats[t as keyof typeof stats]++;
           }
+
+          if (!LOCATION_TERRAINS.has(t) || visited.has(`${x},${y}`)) {
+            continue;
+          }
+
+          const queue: Array<{ x: number; y: number }> = [{ x, y }];
+          const cells: Array<{ x: number; y: number }> = [];
+          visited.add(`${x},${y}`);
+
+          while (queue.length > 0) {
+            const current = queue.shift()!;
+            cells.push(current);
+
+            const neighbors = [
+              { x: current.x + 1, y: current.y },
+              { x: current.x - 1, y: current.y },
+              { x: current.x, y: current.y + 1 },
+              { x: current.x, y: current.y - 1 },
+            ];
+
+            for (const next of neighbors) {
+              if (
+                next.x < 0 || next.x >= state.terrain[y].length ||
+                next.y < 0 || next.y >= state.terrain.length ||
+                visited.has(`${next.x},${next.y}`)
+              ) {
+                continue;
+              }
+
+              if (state.terrain[next.y][next.x] === t) {
+                visited.add(`${next.x},${next.y}`);
+                queue.push(next);
+              }
+            }
+          }
+
+          const entry = locationMap.get(t) ?? { count: 0, coords: [] };
+          entry.count += 1;
+          const avgX = cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length;
+          const avgY = cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length;
+          entry.coords.push({ x: Math.round(avgX), y: Math.round(avgY) });
+          locationMap.set(t, entry);
+
           const obj = state.objects?.[y]?.[x];
           if (obj) {
             if (obj.type === "berries") {
@@ -501,7 +645,18 @@ export default function Home() {
         }
       }
     }
-    return { terrainStats: stats, totalBerries: berries, totalWaste: waste };
+
+    const entries = Array.from(locationMap.entries())
+      .map(([terrain, details]) => ({
+        terrain,
+        count: details.count,
+        coords: details.coords.length === 0
+          ? "—"
+          : details.coords.slice(0, 8).map(({ x, y }) => `(${x}, ${y})`).join(", ") + (details.coords.length > 8 ? `, … (${details.coords.length - 8} mehr)` : ""),
+      }))
+      .sort((a, b) => b.count - a.count || a.terrain.localeCompare(b.terrain));
+
+    return { terrainStats: stats, totalBerries: berries, totalWaste: waste, locationEntries: entries };
   }, [state.terrain, state.objects]);
 
   const hour = state.tick % 24;
@@ -573,79 +728,6 @@ export default function Home() {
           50% { opacity: 1; }
         }
       `}</style>
-
-      {/* 🔄 WORLD GENERATION PROGRESS OVERLAY */}
-      {state.generating && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(15, 23, 42, 0.92)",
-          backdropFilter: "blur(12px)",
-          zIndex: 9999,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: 24,
-          padding: 32,
-        }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 48, filter: "drop-shadow(0 0 12px rgba(56, 189, 248, 0.4))", animation: "pulse-glow 2s infinite ease-in-out" }}>
-              🌐
-            </span>
-            <h1 style={{ color: "#38bdf8", margin: 0, fontSize: 24, fontWeight: "bold", letterSpacing: "-0.01em" }}>
-              Welt wird generiert…
-            </h1>
-            <p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>
-              Prozedurales Rauschen · Flüsse · Siedlungen · Infrastruktur · Felder
-            </p>
-          </div>
-
-          <div style={{ width: 420, display: "flex", flexDirection: "column", gap: 8 }}>
-            {/* Phase label */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "#7dd3fc", fontFamily: "monospace" }}>
-                {state.genPhase ?? "Initialisierung"}
-              </span>
-              <span style={{ fontSize: 15, fontWeight: "bold", fontFamily: "monospace", color: "#38bdf8" }}>
-                {state.genProgress ?? 0}%
-              </span>
-            </div>
-            {/* Progress bar */}
-            <div style={{ width: "100%", background: "#1e293b", height: 18, borderRadius: 9, overflow: "hidden", border: "1px solid #334155" }}>
-              <div style={{
-                background: "linear-gradient(90deg, #0ea5e9 0%, #06b6d4 60%, #38bdf8 100%)",
-                width: `${state.genProgress ?? 0}%`,
-                height: "100%",
-                borderRadius: 9,
-                transition: "width 0.2s ease-out",
-                boxShadow: "0 0 10px rgba(56, 189, 248, 0.5)"
-              }} />
-            </div>
-            {/* Phase steps */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-              {["Gelände", "Flüsse", "Siedlungen", "Infra.", "Straßen", "Felder", "Brücken"].map((phase, i) => {
-                const stepPct = [2, 22, 32, 50, 62, 72, 84][i];
-                const done = (state.genProgress ?? 0) >= stepPct + 8;
-                const active = (state.genPhase ?? "") === phase || (state.genPhase ?? "").startsWith(phase.replace(".", ""));
-                return (
-                  <span key={phase} style={{
-                    fontSize: 10,
-                    color: done ? "#38bdf8" : active ? "#7dd3fc" : "#475569",
-                    fontFamily: "monospace",
-                    transition: "color 0.3s"
-                  }}>
-                    {done ? "✓" : active ? "▶" : "○"} {phase}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header Panel */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid #334155", paddingBottom: 12, flexShrink: 0, gap: 16 }}>
@@ -739,7 +821,7 @@ export default function Home() {
           <div style={{ minWidth: 120, boxSizing: "border-box" }}>
             <div style={headerLabel}>Profile</div>
             <strong style={{ color: "#60a5fa", display: "block", whiteSpace: "nowrap", fontSize: 12 }}>
-              {process.env.NEXT_PUBLIC_PROFILE || "standard"}
+              {process.env.NEXT_PUBLIC_PROFILE || process.env.PROFILE || "standard"}
             </strong>
           </div>
             <div style={{ minWidth: 140, boxSizing: "border-box" }}>
@@ -923,6 +1005,7 @@ export default function Home() {
               highlightedTerrain={highlightedTerrain}
               hoveredTile={hoveredTile}
               setHoveredTile={setHoveredTile}
+              focusTile={focusTile}
               showMapTooltip={showMapTooltip}
               setShowMapTooltip={setShowMapTooltip}
             />
@@ -982,50 +1065,56 @@ export default function Home() {
               <div style={{ fontSize: 11, fontWeight: "bold", color: "#eab308", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
                 {t.legend.locations}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {Object.entries(terrainColors)
-                  .filter(([terrain]) => LOCATION_TERRAINS.has(terrain))
-                  .map(([terrain, color]) => {
-                    const isHighlighted = highlightedTerrain === terrain;
-                    const label = t.terrain[terrain as keyof typeof t.terrain] ?? terrainLabels[terrain] ?? terrain;
-                    return (
-                      <button
-                        key={terrain}
-                        onClick={() => handleLegendClick(terrain)}
-                        title={`Klicken zum Hervorheben auf der Karte (5 Sek.)`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 12,
-                          background: isHighlighted ? "rgba(245, 158, 11, 0.25)" : "#0f172a",
-                          color: isHighlighted ? "#fef08a" : "#f8fafc",
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: isHighlighted ? "2px solid #f59e0b" : "1px solid #334155",
-                          boxShadow: isHighlighted ? "0 0 10px rgba(245, 158, 11, 0.5)" : "none",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                          textAlign: "left",
-                          width: "100%",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: color, flexShrink: 0, boxShadow: isHighlighted ? "0 0 6px #f59e0b" : "none" }} />
-                          <span style={{ fontWeight: "bold" }}>
-                            {label}
-                          </span>
-                        </div>
-                        {isHighlighted ? (
-                          <span style={{ fontSize: 10, fontWeight: "bold", background: "#f59e0b", color: "#000", padding: "1px 5px", borderRadius: 4 }}>
-                            {highlightCountdown}{t.common.seconds}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 10, color: "#64748b" }}>🔍</span>
-                        )}
-                      </button>
-                    );
-                  })}
+              <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid #334155", background: "#0f172a" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, color: "#e2e8f0" }}>
+                  <thead>
+                    <tr style={{ background: "rgba(56, 189, 248, 0.08)" }}>
+                      <th style={{ textAlign: "left", padding: "8px 8px", borderBottom: "1px solid #334155", whiteSpace: "nowrap" }}>Typ</th>
+                      <th style={{ textAlign: "right", padding: "8px 8px", borderBottom: "1px solid #334155", whiteSpace: "nowrap" }}>Anzahl</th>
+                      <th style={{ textAlign: "left", padding: "8px 8px", borderBottom: "1px solid #334155" }}>Koordinaten</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {locationEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} style={{ padding: "10px 8px", color: "#94a3b8", textAlign: "center" }}>Keine Orte im aktuellen Ausschnitt.</td>
+                      </tr>
+                    ) : (
+                      locationEntries.map(({ terrain, count, coords }) => {
+                        const label = t.terrain[terrain as keyof typeof t.terrain] ?? terrainLabels[terrain] ?? terrain;
+                        const color = terrainColors[terrain] ?? "#38bdf8";
+                        const parsedCoords = coords && coords !== "—"
+                          ? coords.split(", ").map((raw) => {
+                              const match = raw.match(/\((\d+),\s*(\d+)\)/);
+                              if (!match) return null;
+                              return { x: Number(match[1]), y: Number(match[2]) };
+                            }).filter(Boolean) as Array<{ x: number; y: number }>
+                          : [];
+                        const firstCoord = parsedCoords[0] ?? null;
+                        return (
+                          <tr
+                            key={terrain}
+                            onClick={() => handleLegendClick(terrain, firstCoord)}
+                            style={{
+                              borderBottom: "1px solid rgba(51, 65, 85, 0.8)",
+                              cursor: firstCoord ? "pointer" : "default",
+                              background: highlightedTerrain === terrain ? "rgba(56, 189, 248, 0.08)" : "transparent",
+                            }}
+                          >
+                            <td style={{ padding: "7px 8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+                                <span style={{ color: "#f8fafc" }}>{label}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", color: "#fef08a" }}>{count}</td>
+                            <td style={{ padding: "7px 8px", color: "#94a3b8", fontFamily: "monospace", fontSize: 10 }}>{coords || "—"}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -1128,71 +1217,175 @@ export default function Home() {
                   {t.masterControl.observerMode}
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <button
-                    onClick={start}
-                    disabled={state.running}
-                    style={{
-                      padding: "8px 10px",
-                      background: state.running ? "#1e293b" : "#10b981",
-                      color: state.running ? "#64748b" : "#fff",
-                      border: "1px solid #334155",
-                      borderRadius: 6,
-                      fontWeight: "bold",
-                      cursor: state.running ? "default" : "pointer",
-                      fontSize: 12,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 4,
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {t.masterControl.start}
-                  </button>
-                  <button
-                    onClick={pause}
-                    disabled={!state.running}
-                    style={{
-                      padding: "8px 10px",
-                      background: !state.running ? "#1e293b" : "#ef4444",
-                      color: !state.running ? "#64748b" : "#fff",
-                      border: "1px solid #334155",
-                      borderRadius: 6,
-                      fontWeight: "bold",
-                      cursor: !state.running ? "default" : "pointer",
-                      fontSize: 12,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 4,
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {t.masterControl.pause}
-                  </button>
-                  <button
-                    onClick={regenerate}
-                    style={{
-                      padding: "8px 10px",
-                      background: "#0ea5e9",
-                      color: "#fff",
-                      border: "1px solid #334155",
-                      borderRadius: 6,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 4,
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {t.masterControl.regen}
-                  </button>
-                </div>
+               <>
+                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                   <button
+                     onClick={start}
+                     disabled={state.running}
+                     style={{
+                       padding: "8px 10px",
+                       background: state.running ? "#1e293b" : "#10b981",
+                       color: state.running ? "#64748b" : "#fff",
+                       border: "1px solid #334155",
+                       borderRadius: 6,
+                       fontWeight: "bold",
+                       cursor: state.running ? "default" : "pointer",
+                       fontSize: 12,
+                       display: "flex",
+                       alignItems: "center",
+                       justifyContent: "center",
+                       gap: 4,
+                       transition: "all 0.15s ease",
+                     }}
+                   >
+                     {t.masterControl.start}
+                   </button>
+                   <button
+                     onClick={pause}
+                     disabled={!state.running}
+                     style={{
+                       padding: "8px 10px",
+                       background: !state.running ? "#1e293b" : "#ef4444",
+                       color: !state.running ? "#64748b" : "#fff",
+                       border: "1px solid #334155",
+                       borderRadius: 6,
+                       fontWeight: "bold",
+                       cursor: !state.running ? "default" : "pointer",
+                       fontSize: 12,
+                       display: "flex",
+                       alignItems: "center",
+                       justifyContent: "center",
+                       gap: 4,
+                       transition: "all 0.15s ease",
+                     }}
+                   >
+                     {t.masterControl.pause}
+                   </button>
+                   <button
+                     onClick={regenerate}
+                     style={{
+                       padding: "8px 10px",
+                       background: "#0ea5e9",
+                       color: "#fff",
+                       border: "1px solid #334155",
+                       borderRadius: 6,
+                       fontWeight: "bold",
+                       cursor: "pointer",
+                       fontSize: 12,
+                       display: "flex",
+                       alignItems: "center",
+                       justifyContent: "center",
+                       gap: 4,
+                       transition: "all 0.15s ease",
+                     }}
+                   >
+                     {t.masterControl.regen}
+                   </button>
+                 </div>
+
+                 {state.generating && (
+                   <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #334155", display: "flex", flexDirection: "column", gap: 8 }}>
+                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                       <span style={{ fontSize: 12, color: "#7dd3fc", fontWeight: "bold", fontFamily: "monospace" }}>
+                         {state.genPhase ?? "Initialisierung"}
+                       </span>
+                       <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: "bold", fontFamily: "monospace" }}>
+                         {state.genProgress ?? 0}%
+                       </span>
+                     </div>
+                     <div style={{ width: "100%", height: 12, borderRadius: 999, overflow: "hidden", background: "#0f172a", border: "1px solid #334155" }}>
+                       <div style={{
+                         width: `${state.genProgress ?? 0}%`,
+                         height: "100%",
+                         borderRadius: 999,
+                         background: "linear-gradient(90deg, #0ea5e9 0%, #06b6d4 60%, #38bdf8 100%)",
+                         boxShadow: "0 0 10px rgba(56, 189, 248, 0.4)",
+                         transition: "width 0.2s ease-out",
+                       }} />
+                     </div>
+                     <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4, fontSize: 9, color: "#475569", fontFamily: "monospace" }}>
+                       {["Gelände", "Flüsse", "Siedlungen", "Infra.", "Straßen", "Felder", "Brücken"].map((phase, i) => {
+                         const stepPct = [2, 22, 32, 50, 62, 72, 84][i];
+                         const done = (state.genProgress ?? 0) >= stepPct + 8;
+                         const active = (state.genPhase ?? "") === phase || (state.genPhase ?? "").startsWith(phase.replace(".", ""));
+                         return (
+                           <span key={phase} style={{
+                             color: done ? "#38bdf8" : active ? "#7dd3fc" : "#475569",
+                             whiteSpace: "nowrap",
+                             overflow: "hidden",
+                             textOverflow: "ellipsis",
+                           }}>
+                             {done ? "✓" : active ? "▶" : "○"} {phase}
+                           </span>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 )}
+                 {state.lastGeneratedAt && (
+                   <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #334155", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 11, color: "#cbd5e1" }}>
+                     <span style={{ color: "#94a3b8", fontWeight: "bold" }}>Letzte Generierung:</span>
+                     <span style={{ color: "#e2e8f0", fontFamily: "monospace" }}>
+                       {new Date(state.lastGeneratedAt).toLocaleString("de-DE", {
+                         day: "2-digit",
+                         month: "2-digit",
+                         year: "numeric",
+                         hour: "2-digit",
+                         minute: "2-digit",
+                         second: "2-digit",
+                       })}
+                     </span>
+                   </div>
+                 )}
+
+                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: state.generating ? "1px solid #334155" : "1px solid #334155" }}>
+                   <label style={{ display: "block", fontSize: 12, color: "#cbd5e1", marginBottom: 6, fontWeight: "bold" }}>
+                     ⚡ Simulation Speed (Tick Rate)
+                   </label>
+                   <input
+                     type="range"
+                     min="200"
+                     max="4000"
+                     step="100"
+                     value={settings.tickRateMs ?? 2000}
+                     onChange={(e) => updateSettings({ tickRateMs: parseInt(e.target.value) })}
+                     style={{ width: "100%", accentColor: "#eab308" }}
+                   />
+                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                     <span>Fast 200ms</span>
+                     <span style={{ color: "#eab308", fontWeight: "bold" }}>{settings.tickRateMs ?? 2000}ms</span>
+                   </div>
+                 </div>
+               </>
               )}
+            </div>
+
+            <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 12 }}>
+              <h3 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#38bdf8", borderBottom: "1px solid #334155", paddingBottom: 6 }}>
+                Performance Dashboard
+              </h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>Backend Tick</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", color: "#fbbf24", fontFamily: "monospace" }}>{perfMetrics.lastTickDurationMs || 0} ms</div>
+                </div>
+                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>API Latency</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", color: "#34d399", fontFamily: "monospace" }}>{apiLatencyMs || 0} ms</div>
+                </div>
+                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>Memory</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", color: "#a78bfa", fontFamily: "monospace" }}>{perfMetrics.memoryUsedMb || 0} MB</div>
+                </div>
+                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>gRPC Calls</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", color: "#f472b6", fontFamily: "monospace" }}>{perfMetrics.totalGrpcCalls || 0}</div>
+                </div>
+                <div style={{ gridColumn: "span 2", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase" }}>State Snapshot</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", color: "#60a5fa", fontFamily: "monospace" }}>{perfMetrics.lastStateSnapshotMs || 0} ms</div>
+                </div>
+              </div>
             </div>
 
             {/* Active Agents Table & Agent Details Card (Side-by-Side Container) */}

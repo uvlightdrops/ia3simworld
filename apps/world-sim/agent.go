@@ -11,11 +11,28 @@ import (
 )
 
 func (s *Sim) seedAgents() {
-	roles := []string{"Scout", "Builder", "Researcher", "Tracker", "Healer"}
-	names := []string{"Aster", "Nyx", "Pico", "Sora", "Rook"}
+	roles := []string{"Farmer", "Builder", "Artisan", "Trader", "Scout"}
+	count := s.agentsPerNode
+	if count <= 0 {
+		count = 5
+	}
 
-	// Each node spawns exactly 5 agents tied to its homeland
-	s.agents = make([]Agent, 0, 5)
+	names := make([]string, 0, count)
+	if len(s.defaultAgentNames) > 0 {
+		for i := 0; i < count; i++ {
+			if i < len(s.defaultAgentNames) {
+				names = append(names, s.defaultAgentNames[i])
+			} else {
+				names = append(names, fmt.Sprintf("Agent-%d", i+1))
+			}
+		}
+	} else {
+		for i := 0; i < count; i++ {
+			names = append(names, fmt.Sprintf("Agent-%d", i+1))
+		}
+	}
+
+	s.agents = make([]Agent, 0, count)
 
 	interests := [][]Interest{
 		{{"exploration", 80}, {"science", 40}},
@@ -93,12 +110,12 @@ func (s *Sim) seedAgents() {
 		copy(copiedInterests, initialInterests)
 
 		initialInventory := map[string]int{
-			"wood":     4 + (i * 2) % 5,
-			"wheat":    5 + (i * 3) % 6,
-			"stone":    3 + (i * 1) % 4,
-			"water":    6 + (i * 2) % 5,
-			"clay":     2 + (i * 3) % 4,
-			"iron_ore": 2 + (i * 1) % 3,
+			"wood":     4 + (i*2)%5,
+			"wheat":    5 + (i*3)%6,
+			"stone":    3 + (i*1)%4,
+			"water":    6 + (i*2)%5,
+			"clay":     2 + (i*3)%4,
+			"iron_ore": 2 + (i*1)%3,
 			"plank":    1 + (i % 3),
 			"flour":    1 + (i % 2),
 		}
@@ -263,6 +280,251 @@ func (s *Sim) findNearestResource(start Position, resTypes []Terrain) Position {
 	return bestPos
 }
 
+func (s *Sim) findNearestSettlementForAgent(agent *Agent) *Settlement {
+	var best *Settlement
+	bestDist := math.MaxFloat64
+	for i := range s.settlements {
+		settlement := &s.settlements[i]
+		dist := s.toroidalDistance(agent.Position, settlement.Center)
+		if dist < bestDist {
+			bestDist = dist
+			best = settlement
+		}
+	}
+	return best
+}
+
+func (s *Sim) defaultSettlementPatrol(agent *Agent, settlement *Settlement) {
+	if agent == nil || settlement == nil {
+		return
+	}
+	if agent.Position == agent.Target && agent.Target == settlement.Center {
+		offsetX := (int(agent.ID[len(agent.ID)-1])%5 - 2) * 3
+		offsetY := ((int(agent.ID[len(agent.ID)-2]) % 5) - 2) * 3
+		candidate := Position{
+			X: wrap(settlement.Center.X+offsetX, s.worldWidth),
+			Y: wrap(settlement.Center.Y+offsetY, s.worldHeight),
+		}
+		if s.terrain[candidate.Y][candidate.X] != string(TerrainWater) && s.terrain[candidate.Y][candidate.X] != string(TerrainRock) {
+			agent.Target = candidate
+			agent.Status = "patrolling settlement edge"
+			return
+		}
+	}
+	if agent.Position == agent.Target {
+		agent.Target = Position{X: wrap(settlement.Center.X+6, s.worldWidth), Y: wrap(settlement.Center.Y+4, s.worldHeight)}
+	}
+}
+
+func (s *Sim) findNearestBuildSite(agent *Agent, settlement *Settlement, terrainType Terrain) Position {
+	if agent == nil || settlement == nil {
+		return Position{}
+	}
+	bestPos := Position{}
+	bestDist := math.MaxFloat64
+	for y := 0; y < s.worldHeight; y++ {
+		for x := 0; x < s.worldWidth; x++ {
+			if s.terrain[y][x] != string(terrainType) {
+				continue
+			}
+			d := s.toroidalDistance(Position{X: x, Y: y}, settlement.Center)
+			if d < bestDist && d <= 20 {
+				bestDist = d
+				bestPos = Position{X: x, Y: y}
+			}
+		}
+	}
+	return bestPos
+}
+
+func (s *Sim) applyProfessionLogic(agent *Agent, currentTick uint64) {
+	if agent == nil {
+		return
+	}
+	settlement := s.findNearestSettlementForAgent(agent)
+	if settlement == nil {
+		return
+	}
+
+	if len(settlement.BuildQueue) > 0 {
+		project := settlement.BuildQueue[0]
+		switch project.Kind {
+		case "field":
+			if agent.Role == "Farmer" || agent.Role == "Builder" {
+				fieldTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+				if fieldTarget != (Position{}) {
+					agent.Target = fieldTarget
+					agent.Status = "expanding fields"
+					if agent.Position == fieldTarget {
+						s.terrain[fieldTarget.Y][fieldTarget.X] = string(TerrainCrops)
+						s.objects[fieldTarget.Y][fieldTarget.X] = WorldObject{Type: "grain", Amount: 80, MaxAmount: 100}
+						settlement.FieldCount++
+						settlement.FoodStore += 10
+						settlement.BuildQueue = append(settlement.BuildQueue[:0], settlement.BuildQueue[1:]...)
+						return
+					}
+					return
+				}
+			}
+		case "home":
+			if agent.Role == "Builder" {
+				homeTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+				if homeTarget != (Position{}) {
+					agent.Target = homeTarget
+					agent.Status = "building homes"
+					if agent.Position == homeTarget {
+						s.terrain[homeTarget.Y][homeTarget.X] = string(TerrainHome)
+						s.objects[homeTarget.Y][homeTarget.X] = WorldObject{Type: "homestead", Amount: 100, MaxAmount: 100}
+						settlement.Housing++
+						settlement.HousingTarget = max(settlement.HousingTarget, settlement.Housing+6)
+						settlement.WoodStore = max(0, settlement.WoodStore-2)
+						settlement.StoneStore = max(0, settlement.StoneStore-1)
+						settlement.BuildQueue = append(settlement.BuildQueue[:0], settlement.BuildQueue[1:]...)
+						return
+					}
+					return
+				}
+			}
+		case "workshop":
+			if agent.Role == "Builder" || agent.Role == "Artisan" {
+				workshopTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+				if workshopTarget != (Position{}) {
+					agent.Target = workshopTarget
+					agent.Status = "building workshop"
+					if agent.Position == workshopTarget {
+						s.terrain[workshopTarget.Y][workshopTarget.X] = string(TerrainWorkshop)
+						s.objects[workshopTarget.Y][workshopTarget.X] = WorldObject{Type: "workshop", Amount: 100, MaxAmount: 100}
+						settlement.WorkshopCount++
+						settlement.WoodStore = max(0, settlement.WoodStore-6)
+						settlement.BuildQueue = append(settlement.BuildQueue[:0], settlement.BuildQueue[1:]...)
+						return
+					}
+					return
+				}
+			}
+		}
+	}
+
+	switch agent.Role {
+	case "Farmer":
+		if agent.Inventory["wheat"] < 12 || settlement.FoodStore < 80 {
+			cropTarget := s.findNearestResource(agent.Position, []Terrain{TerrainCrops})
+			if cropTarget != (Position{}) {
+				agent.Target = cropTarget
+			}
+			if agent.Position == cropTarget {
+				agent.Inventory["wheat"] += 4
+				settlement.FoodStore += 4
+				agent.Status = "harvesting grain"
+				agent.Mood = "productive"
+			}
+			return
+		}
+		if settlement.FieldCount > 0 {
+			fieldTarget := s.findNearestResource(agent.Position, []Terrain{TerrainCrops})
+			if fieldTarget != (Position{}) {
+				agent.Target = fieldTarget
+				agent.Status = "tending fields"
+				if agent.Position == fieldTarget {
+					settlement.FoodStore += 2
+				}
+				return
+			}
+		}
+		grassTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+		if grassTarget != (Position{}) {
+			agent.Target = grassTarget
+			agent.Status = "planting new fields"
+			if agent.Position == grassTarget {
+				s.terrain[grassTarget.Y][grassTarget.X] = string(TerrainCrops)
+				s.objects[grassTarget.Y][grassTarget.X] = WorldObject{Type: "grain", Amount: 80, MaxAmount: 100}
+				settlement.FieldCount++
+				settlement.FoodStore += 6
+			}
+			return
+		}
+		agent.Status = "tending fields"
+		agent.Target = settlement.Center
+	case "Builder":
+		if settlement.Housing < settlement.Population+6 {
+			homeTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+			if homeTarget != (Position{}) {
+				agent.Target = homeTarget
+				agent.Status = "building homes"
+				if agent.Position == homeTarget {
+					s.terrain[homeTarget.Y][homeTarget.X] = string(TerrainHome)
+					s.objects[homeTarget.Y][homeTarget.X] = WorldObject{Type: "homestead", Amount: 100, MaxAmount: 100}
+					settlement.Housing++
+					settlement.WoodStore = max(0, settlement.WoodStore-2)
+					settlement.StoneStore = max(0, settlement.StoneStore-1)
+				}
+				return
+			}
+		}
+		if settlement.WorkshopCount < 3 && settlement.WoodStore >= 6 {
+			workshopTarget := s.findNearestBuildSite(agent, settlement, TerrainGrass)
+			if workshopTarget != (Position{}) {
+				agent.Target = workshopTarget
+				agent.Status = "building workshop"
+				if agent.Position == workshopTarget {
+					s.terrain[workshopTarget.Y][workshopTarget.X] = string(TerrainWorkshop)
+					s.objects[workshopTarget.Y][workshopTarget.X] = WorldObject{Type: "workshop", Amount: 100, MaxAmount: 100}
+					settlement.WorkshopCount++
+					settlement.WoodStore -= 6
+				}
+				return
+			}
+		}
+		agent.Status = "maintaining roads"
+		agent.Target = settlement.Center
+	case "Artisan":
+		if settlement.WorkshopCount > 0 && (agent.Inventory["wood"] > 4 || agent.Inventory["stone"] > 4 || agent.Inventory["clay"] > 3) {
+			agent.Status = "crafting tools"
+			agent.Target = settlement.Center
+			if s.toroidalDistance(agent.Position, settlement.Center) <= 4 {
+				if agent.Inventory["wood"] > 4 {
+					agent.Inventory["wood"] -= 3
+					agent.Inventory["plank"] += 2
+				}
+				if agent.Inventory["stone"] > 4 {
+					agent.Inventory["stone"] -= 2
+					agent.Inventory["quader"] += 1
+				}
+				if agent.Inventory["clay"] > 3 {
+					agent.Inventory["clay"] -= 2
+					agent.Inventory["pottery"] += 1
+				}
+				settlement.WoodStore = max(0, settlement.WoodStore-1)
+				settlement.StoneStore = max(0, settlement.StoneStore-1)
+			}
+			return
+		}
+		agent.Status = "gathering craft materials"
+		agent.Target = s.findNearestResource(agent.Position, []Terrain{TerrainForest, TerrainRock})
+	case "Trader":
+		if settlement.Stage == "trade" || settlement.Stage == "crafting" || settlement.Stage == "agricultural" {
+			agent.Status = "trading surplus"
+			agent.Target = settlement.Center
+			if s.toroidalDistance(agent.Position, settlement.Center) <= 3 {
+				agent.Resources = clamp(agent.Resources+5, 0, 100)
+				settlement.FoodStore = max(0, settlement.FoodStore-3)
+			}
+			return
+		}
+		agent.Status = "securing routes"
+		agent.Target = settlement.Center
+	case "Scout":
+		agent.Status = "mapping settlement perimeter"
+		agent.Target = settlement.Center
+	}
+
+	s.defaultSettlementPatrol(agent, settlement)
+
+	if currentTick%24 == uint64((currentTick/24)%7) && settlement != nil && settlement.Stage != "subsistence" {
+		settlement.ProductionFocus = strings.ToLower(agent.Role)
+	}
+}
+
 func (s *Sim) advanceAgents(currentTick uint64) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(currentTick)))
 
@@ -353,6 +615,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 		if agent.Inventory == nil {
 			agent.Inventory = make(map[string]int)
 		}
+		s.applyProfessionLogic(agent, currentTick)
 
 		// Count total raw materials in inventory
 		rawCount := agent.Inventory["wood"] + agent.Inventory["wheat"] + agent.Inventory["stone"] + agent.Inventory["water"] + agent.Inventory["clay"] + agent.Inventory["iron_ore"]
@@ -362,22 +625,34 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			currTerrain := s.terrain[agent.Position.Y][agent.Position.X]
 			switch currTerrain {
 			case string(TerrainForest):
-				if agent.Inventory["wood"] < 30 { agent.Inventory["wood"]++ }
+				if agent.Inventory["wood"] < 30 {
+					agent.Inventory["wood"]++
+				}
 			case string(TerrainCrops):
-				if agent.Inventory["wheat"] < 30 { agent.Inventory["wheat"]++ }
+				if agent.Inventory["wheat"] < 30 {
+					agent.Inventory["wheat"]++
+				}
 			case string(TerrainWater):
-				if agent.Inventory["water"] < 30 { agent.Inventory["water"]++ }
+				if agent.Inventory["water"] < 30 {
+					agent.Inventory["water"]++
+				}
 			case string(TerrainRock):
 				rVal := rng.Intn(3)
-				if rVal == 0 && agent.Inventory["stone"] < 30 { agent.Inventory["stone"]++ }
-				if rVal == 1 && agent.Inventory["clay"] < 30 { agent.Inventory["clay"]++ }
-				if rVal == 2 && agent.Inventory["iron_ore"] < 30 { agent.Inventory["iron_ore"]++ }
+				if rVal == 0 && agent.Inventory["stone"] < 30 {
+					agent.Inventory["stone"]++
+				}
+				if rVal == 1 && agent.Inventory["clay"] < 30 {
+					agent.Inventory["clay"]++
+				}
+				if rVal == 2 && agent.Inventory["iron_ore"] < 30 {
+					agent.Inventory["iron_ore"]++
+				}
 			}
 
 			// Specialized Ancient Building Processing
 			// Economy domain: check quota before non-essential production steps
 			econAllowed := s.domainActionAllowed("economy", currentTick)
-			econCore   := s.domainCoreOnly("economy")
+			econCore := s.domainCoreOnly("economy")
 			if currentTick%4 == uint64(i%4) {
 				switch currTerrain {
 				case string(TerrainMill):
@@ -479,7 +754,7 @@ func (s *Sim) advanceAgents(currentTick uint64) {
 			processedCount := agent.Inventory["bread"] + agent.Inventory["tool"] + agent.Inventory["quader"] + agent.Inventory["pottery"] + agent.Inventory["plank"] + agent.Inventory["flour"] + agent.Inventory["iron_bar"]
 
 			econAllowed := s.domainActionAllowed("economy", currentTick)
-			econCore    := s.domainCoreOnly("economy")
+			econCore := s.domainCoreOnly("economy")
 
 			if processedCount >= 3 && econAllowed {
 				// Deliver finished goods to Storehouse / Granary (🏛️📦)
@@ -628,7 +903,9 @@ func (s *Sim) domainActionAllowed(domain string, currentTick uint64) bool {
 		windowStart = &s.geistWindowStart
 	}
 	ws := uint64(cfg.WindowSize)
-	if ws == 0 { ws = 100 }
+	if ws == 0 {
+		ws = 100
+	}
 	if currentTick >= *windowStart+ws {
 		// reset window
 		*windowStart = currentTick
@@ -670,7 +947,9 @@ func (s *Sim) recordDomainAction(domain string, currentTick uint64) {
 		return
 	}
 	ws := uint64(cfg.WindowSize)
-	if ws == 0 { ws = 100 }
+	if ws == 0 {
+		ws = 100
+	}
 
 	switch domain {
 	case "economy":
@@ -930,10 +1209,18 @@ func (s *Sim) ensureSector(secX, secY int) {
 			minY, maxY = p.Y, p.Y
 			first = false
 		} else {
-			if p.X < minX { minX = p.X }
-			if p.X > maxX { maxX = p.X }
-			if p.Y < minY { minY = p.Y }
-			if p.Y > maxY { maxY = p.Y }
+			if p.X < minX {
+				minX = p.X
+			}
+			if p.X > maxX {
+				maxX = p.X
+			}
+			if p.Y < minY {
+				minY = p.Y
+			}
+			if p.Y > maxY {
+				maxY = p.Y
+			}
 		}
 	}
 

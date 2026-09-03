@@ -3,7 +3,9 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,26 +17,26 @@ var embeddedTaxonomy []byte
 type Terrain string
 
 const (
-	TerrainGrass      Terrain = "grass"
-	TerrainWater      Terrain = "water"
-	TerrainForest     Terrain = "forest"
-	TerrainRock       Terrain = "rock"
-	TerrainHome       Terrain = "home"
-	TerrainRoad       Terrain = "road"
-	TerrainCourt      Terrain = "court"      // Gerichtshof (⚖️)
-	TerrainMarket     Terrain = "market"     // Marktplatz (🛒)
-	TerrainCrops      Terrain = "crops"      // Felder/Feldfrüchte (🌾)
-	TerrainWorkshop   Terrain = "workshop"   // Werkstatt / Holzarbeiten (🛠️)
-	TerrainMill       Terrain = "mill"       // Getreidemühle (🌾⚙️)
-	TerrainQuarry     Terrain = "quarry"     // Steinbruch (🪨⛏️)
-	TerrainForge      Terrain = "forge"      // Schmelze & Schmiede (🔥⚒️)
-	TerrainPottery    Terrain = "pottery"    // Töpferei & Brunnen (🏺💧)
-	TerrainStorehouse Terrain = "storehouse" // Kornspeicher & Zentrallager (🏛️📦)
-	TerrainTemple     Terrain = "temple"     // Tempel / Schrein (🏛️✨)
-	TerrainWell       Terrain = "well"       // Brunnen (💧🪣)
-	TerrainBridge     Terrain = "bridge"     // Brücke über Fluss (🌉)
-	TerrainGraveyard  Terrain = "graveyard"  // Friedhof (⚰️)
-	TerrainFarm       Terrain = "farm"       // Bauernhof-Gehöft (🏡🌾)
+	TerrainGrass           Terrain = "grass"
+	TerrainWater           Terrain = "water"
+	TerrainForest          Terrain = "forest"
+	TerrainRock            Terrain = "rock"
+	TerrainHome            Terrain = "home"
+	TerrainRoad            Terrain = "road"
+	TerrainCourt           Terrain = "court"            // Gerichtshof (⚖️)
+	TerrainMarket          Terrain = "market"           // Marktplatz (🛒)
+	TerrainCrops           Terrain = "crops"            // Felder/Feldfrüchte (🌾)
+	TerrainWorkshop        Terrain = "workshop"         // Werkstatt / Holzarbeiten (🛠️)
+	TerrainMill            Terrain = "mill"             // Getreidemühle (🌾⚙️)
+	TerrainQuarry          Terrain = "quarry"           // Steinbruch (🪨⛏️)
+	TerrainForge           Terrain = "forge"            // Schmelze & Schmiede (🔥⚒️)
+	TerrainPottery         Terrain = "pottery"          // Töpferei & Brunnen (🏺💧)
+	TerrainStorehouse      Terrain = "storehouse"       // Kornspeicher & Zentrallager (🏛️📦)
+	TerrainTemple          Terrain = "temple"           // Tempel / Schrein (🏛️✨)
+	TerrainWell            Terrain = "well"             // Brunnen (💧🪣)
+	TerrainBridge          Terrain = "bridge"           // Brücke über Fluss (🌉)
+	TerrainGraveyard       Terrain = "graveyard"        // Friedhof (⚰️)
+	TerrainFarm            Terrain = "farm"             // Bauernhof-Gehöft (🏡🌾)
 	TerrainSpiritualCenter Terrain = "spiritual_center" // Gemeindezentrum (🕉️✨)
 )
 
@@ -62,6 +64,30 @@ type WorldObject struct {
 	MaxAmount int    `json:"maxAmount"` // 100
 }
 
+type ConstructionProject struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	Priority int    `json:"priority"`
+}
+
+type Settlement struct {
+	ID              string                `json:"id"`
+	Center          Position              `json:"center"`
+	Population      int                   `json:"population"`
+	Housing         int                   `json:"housing"`
+	FieldCount      int                   `json:"fieldCount"`
+	WorkshopCount   int                   `json:"workshopCount"`
+	StorageCapacity int                   `json:"storageCapacity"`
+	FoodStore       int                   `json:"foodStore"`
+	WoodStore       int                   `json:"woodStore"`
+	StoneStore      int                   `json:"stoneStore"`
+	Stage           string                `json:"stage"`
+	ProductionFocus string                `json:"productionFocus"`
+	BuildQueue      []ConstructionProject `json:"buildQueue,omitempty"`
+	HousingTarget   int                   `json:"housingTarget"`
+	FoodTarget      int                   `json:"foodTarget"`
+}
+
 type Agent struct {
 	ID                    string         `json:"id"`
 	Name                  string         `json:"name"`
@@ -86,17 +112,17 @@ type Agent struct {
 	Inventory             map[string]int `json:"inventory,omitempty"`
 	// HomelandNodeID is the node ID where this agent was born / seeded.
 	// Agents always "belong" to their homeland — they are never permanently handed over.
-	HomelandNodeID        string         `json:"homelandNodeId,omitempty"`
+	HomelandNodeID string `json:"homelandNodeId,omitempty"`
 }
 
 // SectorClaim records which node owns (maintains) a world sector.
 type SectorClaim struct {
-	SectorX       int    `json:"sectorX"`
-	SectorY       int    `json:"sectorY"`
-	OwnerNodeID   string `json:"ownerNodeId"`
-	OwnerURL      string `json:"ownerUrl"`
-	DiscoveredAt  uint64 `json:"discoveredAt"` // tick when discovered
-	DiscoveredBy  string `json:"discoveredBy"` // agent name
+	SectorX      int    `json:"sectorX"`
+	SectorY      int    `json:"sectorY"`
+	OwnerNodeID  string `json:"ownerNodeId"`
+	OwnerURL     string `json:"ownerUrl"`
+	DiscoveredAt uint64 `json:"discoveredAt"` // tick when discovered
+	DiscoveredBy string `json:"discoveredBy"` // agent name
 }
 
 // NodeRegistration is the request body sent by a new node to the master.
@@ -185,10 +211,10 @@ type GeoPoint struct {
 type MapSource struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	Type        string `json:"type"`        // "osm_overpass", "geojson_preset", "wfs_vector", "custom_url"
+	Type        string `json:"type"` // "osm_overpass", "geojson_preset", "wfs_vector", "custom_url"
 	URL         string `json:"url"`
 	Description string `json:"description"`
-	Status      string `json:"status"`      // "online", "ready", "local"
+	Status      string `json:"status"` // "online", "ready", "local"
 	CreatedAt   string `json:"createdAt"`
 }
 
@@ -207,59 +233,72 @@ type ImportedMap struct {
 	IsActive     bool    `json:"isActive"`
 }
 
+type PerformanceSnapshot struct {
+	LastTickDurationMs  int `json:"lastTickDurationMs"`
+	LastStateSnapshotMs int `json:"lastStateSnapshotMs"`
+	AvgTickDurationMs   int `json:"avgTickDurationMs"`
+	TotalGrpcCalls      int `json:"totalGrpcCalls"`
+	StateRequests       int `json:"stateRequests"`
+	MemoryUsedMb        int `json:"memoryUsedMb"`
+}
+
 type WorldState struct {
-	Running           bool              `json:"running"`
-	Tick              uint64            `json:"tick"`
-	TickRateMs        int               `json:"tickRateMs"`
-	TotalAgents       int               `json:"totalAgents"`
-	WorldSize         WorldBounds       `json:"worldSize"`
-	Terrain           [][]string        `json:"terrain"`
-	Objects           [][]WorldObject   `json:"objects"`
-	Agents            []Agent           `json:"agents"`
-	Events            []string          `json:"events"`
-	LastUpdated       string            `json:"lastUpdated"`
-	CreatedAt         string            `json:"createdAt"`
-	GrassPolicy       string            `json:"grassPolicy"`
-	ForestPolicy      string            `json:"forestPolicy"`
-	ActiveLaws        []string          `json:"activeLaws"`
-	GridOriginX       int               `json:"gridOriginX"`
-	GridOriginY       int               `json:"gridOriginY"`
-	DiscoveredSectors []string          `json:"discoveredSectors"`
-	ActiveScenario    string            `json:"activeScenario"`    // "festival" or ""
-	ScenarioState     string            `json:"scenarioState"`     // "gathering", "active", "dispersing", "completed"
-	ScenarioTargetX   int               `json:"scenarioTargetX"`
-	ScenarioTargetY   int               `json:"scenarioTargetY"`
-	ScenarioTicksLeft int               `json:"scenarioTicksLeft"`
-	ActiveInteraction *HumanInteraction `json:"activeInteraction,omitempty"`
-	AutoAnswerMode    string            `json:"autoAnswerMode"` // "manual", "auto_accept", "auto_reject"
-	RelicSpawnRate    int               `json:"relicSpawnRate"`
-	LawProposeRate    int               `json:"lawProposeRate"`
-	EconEventRate     int               `json:"econEventRate"`
-	ArtifactQuality   int               `json:"artifactQuality"`
-	OllamaEnabled     bool              `json:"ollamaEnabled"`
-	OllamaBaseURL     string            `json:"ollamaBaseUrl"`
-	OllamaModel       string            `json:"ollamaModel"`
-	OllamaMode        string            `json:"ollamaMode"`
-	OllamaTimeoutMs   int               `json:"ollamaTimeoutMs"`
-	ManagerAThoughts  []string          `json:"managerAThoughts"`
-	ManagerBThoughts  []string          `json:"managerBThoughts"`
-	ManagerCThoughts  []string          `json:"managerCThoughts"`
-	Goods             []GoodType        `json:"goods,omitempty"`
-	Recipes           []Recipe          `json:"recipes,omitempty"`
-	GraphEdges        []GraphEdge       `json:"graphEdges,omitempty"`
-	BrainNodes        []BrainNode       `json:"brainNodes,omitempty"`
-	OsmDataLoaded     bool              `json:"osmDataLoaded"`
-	CenterLatLon      string            `json:"centerLatLon"`
-	MapSources        []MapSource       `json:"mapSources,omitempty"`
-	ImportedMaps      []ImportedMap     `json:"importedMaps,omitempty"`
-	Generating        bool              `json:"generating"`
-	GenProgress       int               `json:"genProgress"`
-	GenPhase          string            `json:"genPhase,omitempty"`
-	DomainSettings    DomainSettings    `json:"domainSettings"`
-	SectorClaims      []SectorClaim     `json:"sectorClaims,omitempty"`
-	NodeID            string            `json:"nodeId,omitempty"`
-	AssignedSectorX   int               `json:"assignedSectorX"`
-	AssignedSectorY   int               `json:"assignedSectorY"`
+	Running           bool                 `json:"running"`
+	Tick              uint64               `json:"tick"`
+	TickRateMs        int                  `json:"tickRateMs"`
+	TotalAgents       int                  `json:"totalAgents"`
+	WorldSize         WorldBounds          `json:"worldSize"`
+	Terrain           [][]string           `json:"terrain"`
+	Objects           [][]WorldObject      `json:"objects"`
+	Agents            []Agent              `json:"agents"`
+	Events            []string             `json:"events"`
+	LastUpdated       string               `json:"lastUpdated"`
+	CreatedAt         string               `json:"createdAt"`
+	GrassPolicy       string               `json:"grassPolicy"`
+	ForestPolicy      string               `json:"forestPolicy"`
+	ActiveLaws        []string             `json:"activeLaws"`
+	GridOriginX       int                  `json:"gridOriginX"`
+	GridOriginY       int                  `json:"gridOriginY"`
+	DiscoveredSectors []string             `json:"discoveredSectors"`
+	ActiveScenario    string               `json:"activeScenario"` // "festival" or ""
+	ScenarioState     string               `json:"scenarioState"`  // "gathering", "active", "dispersing", "completed"
+	ScenarioTargetX   int                  `json:"scenarioTargetX"`
+	ScenarioTargetY   int                  `json:"scenarioTargetY"`
+	ScenarioTicksLeft int                  `json:"scenarioTicksLeft"`
+	ActiveInteraction *HumanInteraction    `json:"activeInteraction,omitempty"`
+	AutoAnswerMode    string               `json:"autoAnswerMode"` // "manual", "auto_accept", "auto_reject"
+	RelicSpawnRate    int                  `json:"relicSpawnRate"`
+	LawProposeRate    int                  `json:"lawProposeRate"`
+	EconEventRate     int                  `json:"econEventRate"`
+	ArtifactQuality   int                  `json:"artifactQuality"`
+	OllamaEnabled     bool                 `json:"ollamaEnabled"`
+	OllamaBaseURL     string               `json:"ollamaBaseUrl"`
+	OllamaModel       string               `json:"ollamaModel"`
+	OllamaMode        string               `json:"ollamaMode"`
+	OllamaTimeoutMs   int                  `json:"ollamaTimeoutMs"`
+	ManagerAThoughts  []string             `json:"managerAThoughts"`
+	ManagerBThoughts  []string             `json:"managerBThoughts"`
+	ManagerCThoughts  []string             `json:"managerCThoughts"`
+	Goods             []GoodType           `json:"goods,omitempty"`
+	Recipes           []Recipe             `json:"recipes,omitempty"`
+	GraphEdges        []GraphEdge          `json:"graphEdges,omitempty"`
+	BrainNodes        []BrainNode          `json:"brainNodes,omitempty"`
+	OsmDataLoaded     bool                 `json:"osmDataLoaded"`
+	CenterLatLon      string               `json:"centerLatLon"`
+	MapSources        []MapSource          `json:"mapSources,omitempty"`
+	ImportedMaps      []ImportedMap        `json:"importedMaps,omitempty"`
+	Generating        bool                 `json:"generating"`
+	GenProgress       int                  `json:"genProgress"`
+	GenPhase          string               `json:"genPhase,omitempty"`
+	LastGeneratedAt   string               `json:"lastGeneratedAt,omitempty"`
+	DomainSettings    DomainSettings       `json:"domainSettings"`
+	SectorClaims      []SectorClaim        `json:"sectorClaims,omitempty"`
+	Settlements       []Settlement         `json:"settlements,omitempty"`
+	CivilizationStage string               `json:"civilizationStage,omitempty"`
+	NodeID            string               `json:"nodeId,omitempty"`
+	AssignedSectorX   int                  `json:"assignedSectorX"`
+	AssignedSectorY   int                  `json:"assignedSectorY"`
+	Performance       *PerformanceSnapshot `json:"performance,omitempty"`
 }
 
 // DomainMode controls the activity level for one simulation domain.
@@ -274,15 +313,15 @@ const (
 
 // DomainConfig holds the settings for one domain (economy / court / geistesleben).
 type DomainConfig struct {
-	Mode         DomainMode `json:"mode"`
-	QuotaPerWindow int      `json:"quotaPerWindow"` // max actions per window (restricted mode)
-	WindowSize   int        `json:"windowSize"`     // window length in ticks
+	Mode           DomainMode `json:"mode"`
+	QuotaPerWindow int        `json:"quotaPerWindow"` // max actions per window (restricted mode)
+	WindowSize     int        `json:"windowSize"`     // window length in ticks
 }
 
 // DomainSettings holds settings for all three social-threefolding domains.
 type DomainSettings struct {
-	Economy     DomainConfig `json:"economy"`
-	Court       DomainConfig `json:"court"`
+	Economy      DomainConfig `json:"economy"`
+	Court        DomainConfig `json:"court"`
 	Geistesleben DomainConfig `json:"geistesleben"`
 }
 
@@ -294,11 +333,27 @@ func defaultDomainSettings() DomainSettings {
 	}
 }
 
+type worldArchitectureConfig struct {
+	HomesPerSettlement            int
+	FarmsPerSettlement            int
+	MillsPerSettlement            int
+	ForgesPerSettlement           int
+	QuarriesPerSettlement         int
+	PotteryPerSettlement          int
+	WorkshopsPerSettlement        int
+	WellsPerSettlement            int
+	SpiritualCentersPerSettlement int
+	MarketsTotal                  int
+	CourtsTotal                   int
+	StorehousesTotal              int
+}
+
 type Sim struct {
 	running             atomic.Bool
 	generating          atomic.Bool
 	genProgress         atomic.Int32
 	genPhase            atomic.Value // stores string
+	generationMu        sync.Mutex
 	tick                atomic.Uint64
 	tickDuration        time.Duration
 	tickDurationMu      sync.RWMutex
@@ -322,13 +377,20 @@ type Sim struct {
 	rechtssphaereTax    float64
 	wirtschaftslebenTax float64
 
+	// Runtime configuration values
+	agentsPerNode     int
+	settlementCount   int
+	minSettlementDist int
+	defaultAgentNames []string
+	architecture      worldArchitectureConfig
+
 	// Infinite World & Sectors
-	sectors        map[Position]bool
-	sectorsMu      sync.RWMutex
-	minSectorX     int
-	maxSectorX     int
-	minSectorY     int
-	maxSectorY     int
+	sectors    map[Position]bool
+	sectorsMu  sync.RWMutex
+	minSectorX int
+	maxSectorX int
+	minSectorY int
+	maxSectorY int
 
 	// Scenario State Machine
 	scenarioActive    bool
@@ -339,9 +401,9 @@ type Sim struct {
 	scenarioStartTick uint64
 
 	// Weekly Congregation at Spiritual Centers
-	spiritualCenters    []Position // all spiritual center locations in the world
-	congregationActive  bool
-	congregationTarget  Position
+	spiritualCenters     []Position // all spiritual center locations in the world
+	congregationActive   bool
+	congregationTarget   Position
 	lastCongregationTick uint64
 
 	// Human Interactive Quests & NPCs Addressing Human
@@ -365,9 +427,10 @@ type Sim struct {
 	managerCThoughts []string
 
 	// Economy Goods & Recipes Taxonomy
-	goods         []GoodType
-	recipes       []Recipe
-	createdAt     time.Time
+	goods           []GoodType
+	recipes         []Recipe
+	createdAt       time.Time
+	lastGeneratedAt time.Time
 
 	// Federated Knowledge Graph & Brain Nodes & OSM Geodata
 	graphEdges    []GraphEdge
@@ -383,38 +446,49 @@ type Sim struct {
 	domainSettings   DomainSettings
 	domainSettingsMu sync.RWMutex
 	// per-window action counters (reset each windowSize ticks)
-	econActionsThisWindow        int
-	courtActionsThisWindow       int
-	geistActionsThisWindow       int
-	econWindowStart              uint64
-	courtWindowStart             uint64
-	geistWindowStart             uint64
+	econActionsThisWindow  int
+	courtActionsThisWindow int
+	geistActionsThisWindow int
+	econWindowStart        uint64
+	courtWindowStart       uint64
+	geistWindowStart       uint64
 
 	// Multi-Node World: Master/Worker Federation
 	// nodeID: this node's unique identifier (env NODE_ID, fallback NODE_NAME)
-	nodeID          string
+	nodeID string
 	// masterURL: URL of master node; empty = this node is master
-	masterURL       string
+	masterURL string
 	// isMaster: true when this node acts as the master registry
-	isMaster        bool
+	isMaster bool
 	// assignedSectorX/Y: the primary sector this node is responsible for
 	assignedSectorX int
 	assignedSectorY int
 	// knownNodes: all registered nodes (master-side registry)
-	knownNodes      []NodeRegistration
-	knownNodesMu    sync.RWMutex
+	knownNodes   []NodeRegistration
+	knownNodesMu sync.RWMutex
 	// sectorClaims: all claimed sectors across the federation
-	sectorClaims    map[Position]SectorClaim
-	sectorClaimsMu  sync.RWMutex
+	sectorClaims   map[Position]SectorClaim
+	sectorClaimsMu sync.RWMutex
 
 	// Settlement Centers: populated during terrain generation for agent homestead spawning
 	settlementCenters []Position
+	settlements       []Settlement
+	civilizationStage string
 
 	// State Serialization Cache (prevents allocating millions on each poll)
-	cachedTerrain      [][]string
-	cachedObjects      [][]WorldObject
-	cachedTerrainTick  uint64
-	cachedObjectsTick  uint64
+	cachedTerrain     [][]string
+	cachedObjects     [][]WorldObject
+	cachedTerrainTick uint64
+	cachedObjectsTick uint64
+
+	// Performance tracking
+	lastTickDurationMs      atomic.Int64
+	lastStateSnapshotMs     atomic.Int64
+	stateRequestCount       atomic.Int64
+	grpcCallCount           atomic.Int64
+	lastPerfLogMs           atomic.Int64
+	lastGrpcDecisionTick    atomic.Uint64
+	grpcDecisionIntervalMin int
 }
 
 func (s *Sim) addEvent(msg string) {
@@ -422,7 +496,7 @@ func (s *Sim) addEvent(msg string) {
 	defer s.eventsMu.Unlock()
 	tStr := os.Getenv("TIME_OVERRIDE")
 	if tStr == "" {
-		tStr = fmt.Sprintf("%02d:%02d:%02d", (s.tick.Load()%24), 0, 0)
+		tStr = fmt.Sprintf("%02d:%02d:%02d", (s.tick.Load() % 24), 0, 0)
 	}
 	event := fmt.Sprintf("[%s] %s", tStr, msg)
 	s.events = append([]string{event}, s.events...)
@@ -441,4 +515,32 @@ func getenv(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func perfLoggingEnabled() bool {
+	mode := strings.ToLower(os.Getenv("LOG_PERF"))
+	if mode == "1" || mode == "true" || mode == "yes" {
+		return true
+	}
+	return os.Getenv("PROFILE") == "perf-benchmark"
+}
+
+func (s *Sim) maybeLogPerf(event string, durationMs int64, thresholdMs int64) {
+	if !perfLoggingEnabled() {
+		return
+	}
+	if durationMs <= thresholdMs {
+		return
+	}
+	for {
+		now := time.Now().UnixMilli()
+		last := s.lastPerfLogMs.Load()
+		if now-last < 15000 {
+			return
+		}
+		if s.lastPerfLogMs.CompareAndSwap(last, now) {
+			log.Printf("[perf] %s=%dms tick=%d agents=%d stateReqs=%d grpcCalls=%d", event, durationMs, s.tick.Load(), len(s.agents), s.stateRequestCount.Load(), s.grpcCallCount.Load())
+			return
+		}
+	}
 }

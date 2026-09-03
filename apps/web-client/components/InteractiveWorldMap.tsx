@@ -9,6 +9,7 @@ export function InteractiveWorldMap({
   highlightedTerrain,
   hoveredTile: externalHoveredTile,
   setHoveredTile: externalSetHoveredTile,
+  focusTile,
   showMapTooltip = false,
   setShowMapTooltip,
 }: {
@@ -18,6 +19,7 @@ export function InteractiveWorldMap({
   highlightedTerrain?: string | null;
   hoveredTile?: { x: number; y: number } | null;
   setHoveredTile?: (tile: { x: number; y: number } | null) => void;
+  focusTile?: { x: number; y: number } | null;
   showMapTooltip?: boolean;
   setShowMapTooltip?: (show: boolean) => void;
 }) {
@@ -46,6 +48,7 @@ export function InteractiveWorldMap({
   };
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [animTick, setAnimTick] = useState(0);
+  const lastRenderSignatureRef = useRef("");
 
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -107,7 +110,9 @@ export function InteractiveWorldMap({
 
     const zoomW = (dimensions.width - 40) / mapW;
     const zoomH = (dimensions.height - 40) / mapH;
-    const newZoom = Math.min(zoomW, zoomH, 2.0);
+    const fitZoom = Math.min(zoomW, zoomH, 2.0);
+    const minVisibleZoom = 0.2;
+    const newZoom = Math.max(minVisibleZoom, fitZoom);
 
     setZoom(newZoom);
     setOffsetX((dimensions.width - mapW * newZoom) / 2);
@@ -139,6 +144,15 @@ export function InteractiveWorldMap({
       lastWorldSize.current = { ...state.worldSize };
     }
   }, [dimensions, state.worldSize]);
+
+  useEffect(() => {
+    if (!focusTile || state.worldSize.width <= 0 || dimensions.width <= 0) return;
+    const size = tileSize * zoom;
+    const centeredX = dimensions.width / 2 - (focusTile.x + 0.5) * size;
+    const centeredY = dimensions.height / 2 - (focusTile.y + 0.5) * size;
+    setOffsetX(centeredX);
+    setOffsetY(centeredY);
+  }, [focusTile, dimensions.width, dimensions.height, state.worldSize.width, state.worldSize.height, zoom]);
 
   // Mouse drag / pan handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -269,13 +283,37 @@ export function InteractiveWorldMap({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const renderSignature = [
+      state.tick,
+      state.running ? 1 : 0,
+      state.agents.length,
+      selectedAgent ?? "",
+      highlightedTerrain ?? "",
+      hoveredTile?.x ?? "",
+      hoveredTile?.y ?? "",
+      showPaths ? 1 : 0,
+      zoom.toFixed(2),
+      offsetX.toFixed(0),
+      offsetY.toFixed(0),
+      dimensions.width,
+      dimensions.height,
+    ].join(":");
+
+    if (!state.running && !selectedAgent && !highlightedTerrain && !hoveredTile && renderSignature === lastRenderSignatureRef.current) {
+      return;
+    }
+    lastRenderSignatureRef.current = renderSignature;
+
+    const profileName = (process.env.NEXT_PUBLIC_PROFILE || process.env.PROFILE || "").toLowerCase();
+    const perfEnabled = process.env.NEXT_PUBLIC_LOG_PERF === "1" || profileName === "perf" || profileName === "perf-benchmark";
+    const renderStart = performance.now();
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
     if (!state.terrain || state.terrain.length === 0) return;
 
-    const mapWidth = state.worldSize.width;
-    const mapHeight = state.worldSize.height;
+    const mapWidth = state.terrain[0]?.length ?? state.worldSize.width ?? 0;
+    const mapHeight = state.terrain.length || state.worldSize.height || 0;
     const size = tileSize * zoom;
 
     // Viewport culling coordinates
@@ -470,6 +508,7 @@ export function InteractiveWorldMap({
 
           if (terrain === "temple") {
             if (size > 10) {
+              ctx.fillStyle = "#ffffff";
               ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -482,6 +521,7 @@ export function InteractiveWorldMap({
 
           if (terrain === "well") {
             if (size > 10) {
+              ctx.fillStyle = "#ffffff";
               ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -496,6 +536,7 @@ export function InteractiveWorldMap({
 
           if (terrain === "bridge") {
             if (size > 10) {
+              ctx.fillStyle = "#ffffff";
               ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -508,6 +549,7 @@ export function InteractiveWorldMap({
 
           if (terrain === "graveyard") {
             if (size > 10) {
+              ctx.fillStyle = "#ffffff";
               ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -520,6 +562,7 @@ export function InteractiveWorldMap({
 
           if (terrain === "farm") {
             if (size > 10) {
+              ctx.fillStyle = "#ffffff";
               ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -527,6 +570,19 @@ export function InteractiveWorldMap({
             } else {
               ctx.fillStyle = "#65a30d";
               ctx.fillRect(px + size * 0.1, py + size * 0.2, size * 0.8, size * 0.6);
+            }
+          }
+
+          if (terrain === "spiritual_center") {
+            if (size > 10) {
+              ctx.fillStyle = "#ffffff";
+              ctx.font = `${Math.max(8, size * 0.65)}px sans-serif`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("🕉️", px + size / 2, py + size / 2);
+            } else {
+              ctx.fillStyle = "#22c55e";
+              ctx.fillRect(px + size * 0.2, py + size * 0.2, size * 0.6, size * 0.6);
             }
           }
 
@@ -849,6 +905,19 @@ export function InteractiveWorldMap({
       ctx.strokeStyle = "#38bdf8";
       ctx.lineWidth = 2;
       ctx.strokeRect(px, py, size, size);
+    }
+
+    const renderMs = performance.now() - renderStart;
+    if (perfEnabled && (renderMs > 16 || Date.now() - Number((globalThis as any).__ia3MapRenderLogMs ?? 0) > 15000)) {
+      (globalThis as any).__ia3MapRenderLogMs = Date.now();
+      console.warn("[perf] map render", {
+        renderMs,
+        tick: state.tick,
+        agents: state.agents.length,
+        zoom,
+        worldSize: state.worldSize,
+        viewport: { width: dimensions.width, height: dimensions.height },
+      });
     }
   }, [
     state,

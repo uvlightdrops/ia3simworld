@@ -47,8 +47,22 @@ world:
     count: 4                   # Number of towns on the map
     min_distance: 70           # Minimum distance between settlements (tiles)
     homestead_radius: 4        # Building cluster radius
-    spiritual_centers: 1       # Spiritual centers PER settlement
+    spiritual_centers: 1       # Spiritual centers PER settlement (legacy alias)
     spiritual_center_size: 3   # 3×3 tiles per spiritual center
+
+  buildings:
+    homes_per_settlement: 1
+    farms_per_settlement: 1
+    mills_per_settlement: 1
+    forges_per_settlement: 1
+    quarries_per_settlement: 1
+    pottery_per_settlement: 1
+    workshops_per_settlement: 1
+    wells_per_settlement: 1
+    spiritual_centers_per_settlement: 1
+    markets_total: 1
+    courts_total: 1
+    storehouses_total: 1
   
   # ========================================================================
   # Simulation Timing
@@ -65,6 +79,17 @@ world:
   # ========================================================================
   agents_per_node: 5           # Each node spawns 5 agents
   agent_start_behavior: "idle" # idle | wander | explore
+  default_names:
+    - "Aster"
+    - "Nyx"
+    - "Pico"
+    - "Sora"
+    - "Rook"
+    - "Luma"
+    - "Vale"
+    - "Kite"
+    - "Mira"
+    - "Talon"
   
   # ========================================================================
   # Behavioral Constants

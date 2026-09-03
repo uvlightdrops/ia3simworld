@@ -5,6 +5,8 @@
 
 This document tracks all performance improvements implemented across the IA3 SimWorld platform, moving away from reactive debugging to proactive performance architecture.
 
+Related instrumentation concept: `docs/performance-observability-concept.md`
+
 ---
 
 ## Phase 1: Quick Wins ✅ (COMPLETE)
@@ -219,6 +221,28 @@ All Phase 2 optimizations have been implemented and are **active in production**
 - Requests 2-5 (same tick): 100-400ms each (cached, no copy)
 
 **Status**: ✅ **Deployed & Active** (2026-08-29)
+
+---
+
+### 2.6 Mesa gRPC Tick Gating ✅
+
+**Problem**: `world-sim` called the Python Mesa service on every simulation tick. The Python side rebuilt the Mesa model and refreshed manager thought state each time, so `main.py` could burn CPU even with no user interaction.
+
+**Solution**: Only query the Mesa service on ticks where cross-domain decisions can actually change, and suppress duplicate fallback thought entries that previously churned every call.
+
+**Implementation**:
+- File: `apps/world-sim/grpc_client.go`
+  - Added `shouldQueryMesaAgentBehavior()` to skip non-decision ticks.
+  - Keeps gRPC traffic to decision cadence (`%15`, `%120`, configured law/econ cadence, hour `23`).
+- File: `apps/agent-service/main.py`
+  - Added `prepend_unique_thought()` so repeated fallback manager messages no longer rewrite the same thought lists every tick.
+
+**Impact**:
+- Python agent CPU usage at idle: **substantially reduced**
+- gRPC request volume: **far lower** than one request per simulation tick
+- Frontend churn: reduced, because unchanged manager-thought arrays stop updating constantly
+
+**Status**: ✅ **Deployed & Active** (2026-08-30)
 
 ---
 

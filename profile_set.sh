@@ -1,0 +1,4 @@
+#!/bin/bash
+
+PROFILE=$1
+NEXT_PUBLIC_PROFILE=$1

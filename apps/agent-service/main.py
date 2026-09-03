@@ -76,6 +76,13 @@ class GameManagerState:
 
 state_tracker = GameManagerState()
 
+def prepend_unique_thought(thoughts, text):
+    if thoughts and thoughts[0].endswith(text):
+        return
+    thoughts.insert(0, f"[{time.strftime('%H:%M:%S')}] {text}")
+    if len(thoughts) > 20:
+        del thoughts[20:]
+
 
 class MesaSimAgent(mesa.Agent):
     def __init__(self, unique_id, model, agent_data):
@@ -514,9 +521,15 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             if ollama_thought_a:
                 state_tracker.add_thought_a(f"🤖 [Ollama/{ollama_model}] {ollama_thought_a}")
             else:
-                state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.")
+                prepend_unique_thought(
+                    state_tracker.manager_a_thoughts,
+                    f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.",
+                )
         else:
-            state_tracker.add_thought_a(f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.")
+            prepend_unique_thought(
+                state_tracker.manager_a_thoughts,
+                f"Scanning world for spiritual needs. Ticks since last relic: {ticks_relic}/{relic_spawn_rate}. Quality: {artifact_quality}%.",
+            )
 
         if current_tick > 0 and (current_tick == 10 or (ticks_relic >= relic_spawn_rate)):
             state_tracker.last_relic_tick = current_tick
@@ -546,9 +559,15 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             if ollama_thought_b:
                 state_tracker.add_thought_b(f"🤖 [Ollama/{ollama_model}] {ollama_thought_b}")
             else:
-                state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
+                prepend_unique_thought(
+                    state_tracker.manager_b_thoughts,
+                    f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.",
+                )
         else:
-            state_tracker.add_thought_b(f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.")
+            prepend_unique_thought(
+                state_tracker.manager_b_thoughts,
+                f"Evaluating tribunal legislative schedule. Ticks since last law: {ticks_law}/{law_propose_rate}. Active laws count: {len(state_tracker.active_laws)}.",
+            )
 
         if current_tick > 0 and (ticks_law >= law_propose_rate):
             state_tracker.last_law_tick = current_tick
@@ -614,9 +633,15 @@ class AgentDecisionServicer(sim_pb2_grpc.AgentDecisionServiceServicer):
             if ollama_thought_c:
                 state_tracker.add_thought_c(f"🤖 [Ollama/{ollama_model}] {ollama_thought_c}")
             else:
-                state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
+                prepend_unique_thought(
+                    state_tracker.manager_c_thoughts,
+                    f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.",
+                )
         else:
-            state_tracker.add_thought_c(f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.")
+            prepend_unique_thought(
+                state_tracker.manager_c_thoughts,
+                f"Monitoring resource storage and farming conditions. Ticks since last event: {ticks_econ}/{econ_event_rate}.",
+            )
 
         if current_tick > 0 and (ticks_econ >= econ_event_rate):
             state_tracker.last_econ_tick = current_tick

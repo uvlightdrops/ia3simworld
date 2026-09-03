@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -64,12 +65,24 @@ func (s *Sim) handleDomainSettings(w http.ResponseWriter, r *http.Request) {
 		ds.Economy.Mode = validateMode(ds.Economy.Mode)
 		ds.Court.Mode = validateMode(ds.Court.Mode)
 		ds.Geistesleben.Mode = validateMode(ds.Geistesleben.Mode)
-		if ds.Economy.WindowSize <= 0 { ds.Economy.WindowSize = 100 }
-		if ds.Court.WindowSize <= 0 { ds.Court.WindowSize = 100 }
-		if ds.Geistesleben.WindowSize <= 0 { ds.Geistesleben.WindowSize = 100 }
-		if ds.Economy.QuotaPerWindow <= 0 { ds.Economy.QuotaPerWindow = 20 }
-		if ds.Court.QuotaPerWindow <= 0 { ds.Court.QuotaPerWindow = 10 }
-		if ds.Geistesleben.QuotaPerWindow <= 0 { ds.Geistesleben.QuotaPerWindow = 10 }
+		if ds.Economy.WindowSize <= 0 {
+			ds.Economy.WindowSize = 100
+		}
+		if ds.Court.WindowSize <= 0 {
+			ds.Court.WindowSize = 100
+		}
+		if ds.Geistesleben.WindowSize <= 0 {
+			ds.Geistesleben.WindowSize = 100
+		}
+		if ds.Economy.QuotaPerWindow <= 0 {
+			ds.Economy.QuotaPerWindow = 20
+		}
+		if ds.Court.QuotaPerWindow <= 0 {
+			ds.Court.QuotaPerWindow = 10
+		}
+		if ds.Geistesleben.QuotaPerWindow <= 0 {
+			ds.Geistesleben.QuotaPerWindow = 10
+		}
 
 		s.domainSettingsMu.Lock()
 		s.domainSettings = ds
@@ -308,7 +321,7 @@ func (s *Sim) handleControlTriggerCongregation(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.triggerWeeklyCongregation(168)  // 33.6 seconds for testing
+	s.triggerWeeklyCongregation(168) // 33.6 seconds for testing
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "Congregation triggered"})
@@ -449,21 +462,26 @@ func (s *Sim) handleControlRegenerate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if s.generating.Load() {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"status":"already_generating"}`))
+		return
+	}
 	// Run terrain generation asynchronously so /state polling remains responsive.
 	go func() {
 		startTime := time.Now()
 		s.generateTerrain()
 		genDuration := time.Since(startTime)
-		
+
 		agentStart := time.Now()
 		s.seedAgents()
 		agentDuration := time.Since(agentStart)
-		
+
 		totalDuration := time.Since(startTime)
 		s.addEvent(fmt.Sprintf("🌋 [Weltgenerierung] Karte regeneriert in %.1fs (Gelände: %.1fs, Agenten: %.1fs). Alle Artefakte & Strukturen zurückgesetzt.",
 			totalDuration.Seconds(), genDuration.Seconds(), agentDuration.Seconds()))
-		
-		fmt.Printf("Regenerate timing: Terrain=%.1fs, Agents=%.1fs, Total=%.1fs\n", 
+
+		fmt.Printf("Regenerate timing: Terrain=%.1fs, Agents=%.1fs, Total=%.1fs\n",
 			genDuration.Seconds(), agentDuration.Seconds(), totalDuration.Seconds())
 	}()
 	w.WriteHeader(http.StatusOK)
@@ -526,11 +544,33 @@ func (s *Sim) handleControlLoadGame(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"loaded"}`))
 }
 
+func (s *Sim) snapshotPerformance() *PerformanceSnapshot {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	return &PerformanceSnapshot{
+		LastTickDurationMs:  int(s.lastTickDurationMs.Load()),
+		LastStateSnapshotMs: int(s.lastStateSnapshotMs.Load()),
+		AvgTickDurationMs:   int(s.lastTickDurationMs.Load()),
+		TotalGrpcCalls:      int(s.grpcCallCount.Load()),
+		StateRequests:       int(s.stateRequestCount.Load()),
+		MemoryUsedMb:        int(mem.Alloc / (1024 * 1024)),
+	}
+}
+
 func (s *Sim) handleState(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	s.stateRequestCount.Add(1)
+	start := time.Now()
 	var state WorldState
 	if r.URL.Query().Get("compact") == "true" {
 		state = s.snapshotStateCompact()
+		if r.URL.Query().Get("delta") == "true" {
+			state.Terrain = nil
+			state.Objects = nil
+			if len(state.Events) > 10 {
+				state.Events = state.Events[:10]
+			}
+		}
 	} else {
 		maxAgents := 100
 		if maxStr := r.URL.Query().Get("max_agents"); maxStr != "" {
@@ -562,6 +602,10 @@ func (s *Sim) handleState(w http.ResponseWriter, r *http.Request) {
 			state = s.snapshotState(maxAgents)
 		}
 	}
+	state.Performance = s.snapshotPerformance()
+	snapshotMs := time.Since(start).Milliseconds()
+	s.lastStateSnapshotMs.Store(int64(snapshotMs))
+	s.maybeLogPerf("state_snapshot", snapshotMs, 25)
 	if err := json.NewEncoder(w).Encode(state); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -617,8 +661,11 @@ func (s *Sim) snapshotStateCompact() WorldState {
 		Generating:        s.generating.Load(),
 		GenProgress:       int(s.genProgress.Load()),
 		GenPhase:          func() string { v, _ := s.genPhase.Load().(string); return v }(),
+		LastGeneratedAt:   func() string { if s.lastGeneratedAt.IsZero() { return "" }; return s.lastGeneratedAt.Format(time.RFC3339) }(),
 		DomainSettings:    s.domainSettings,
 		SectorClaims:      s.sectorClaimsSlice(),
+		Settlements:       append([]Settlement(nil), s.settlements...),
+		CivilizationStage: s.civilizationStage,
 		NodeID:            s.nodeID,
 		AssignedSectorX:   s.assignedSectorX,
 		AssignedSectorY:   s.assignedSectorY,
@@ -698,8 +745,11 @@ func (s *Sim) snapshotStateViewport(maxAgents, vx, vy, radius int) WorldState {
 		Generating:        s.generating.Load(),
 		GenProgress:       int(s.genProgress.Load()),
 		GenPhase:          func() string { v, _ := s.genPhase.Load().(string); return v }(),
+		LastGeneratedAt:   func() string { if s.lastGeneratedAt.IsZero() { return "" }; return s.lastGeneratedAt.Format(time.RFC3339) }(),
 		DomainSettings:    s.domainSettings,
 		SectorClaims:      s.sectorClaimsSlice(),
+		Settlements:       append([]Settlement(nil), s.settlements...),
+		CivilizationStage: s.civilizationStage,
 		NodeID:            s.nodeID,
 		AssignedSectorX:   s.assignedSectorX,
 		AssignedSectorY:   s.assignedSectorY,
@@ -788,8 +838,11 @@ func (s *Sim) snapshotState(maxAgents int) WorldState {
 		Generating:        s.generating.Load(),
 		GenProgress:       int(s.genProgress.Load()),
 		GenPhase:          func() string { v, _ := s.genPhase.Load().(string); return v }(),
+		LastGeneratedAt:   func() string { if s.lastGeneratedAt.IsZero() { return "" }; return s.lastGeneratedAt.Format(time.RFC3339) }(),
 		DomainSettings:    s.domainSettings,
 		SectorClaims:      s.sectorClaimsSlice(),
+		Settlements:       append([]Settlement(nil), s.settlements...),
+		CivilizationStage: s.civilizationStage,
 		NodeID:            s.nodeID,
 		AssignedSectorX:   s.assignedSectorX,
 		AssignedSectorY:   s.assignedSectorY,

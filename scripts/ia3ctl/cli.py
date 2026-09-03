@@ -57,6 +57,52 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = No
     return subprocess.run(cmd, cwd=cwd or ROOT, env=env, check=False).returncode
 
 
+PROFILE_ALIASES = {
+    "": "",
+    "default": "medium-standard",
+    "standard": "medium-standard",
+    "small": "small-test",
+    "medium": "medium-standard",
+    "large": "large-federated",
+    "perf": "perf-benchmark",
+    "small-test": "small-test",
+    "medium-standard": "medium-standard",
+    "large-federated": "large-federated",
+    "perf-benchmark": "perf-benchmark",
+}
+
+
+def supported_profiles() -> list[str]:
+    profile_dir = ROOT / "config" / "profiles"
+    if not profile_dir.exists():
+        return []
+    return sorted(p.stem for p in profile_dir.glob("*.yaml"))
+
+
+def resolve_profile_name(profile: str | None) -> str:
+    raw = (profile or "").strip()
+    if not raw:
+        return ""
+    key = raw.lower()
+    resolved = PROFILE_ALIASES.get(key, raw)
+    if resolved in supported_profiles() or resolved in PROFILE_ALIASES.values():
+        return resolved
+    raise typer.BadParameter(
+        f"Unknown profile '{profile}'. Supported profiles: {', '.join(supported_profiles()) or 'none'}"
+    )
+
+
+def apply_profile_env(env: dict[str, str], profile: str | None = None, stage: str | None = None) -> None:
+    profile_value = resolve_profile_name(profile or os.environ.get("PROFILE"))
+    stage_value = (stage or os.environ.get("STAGE") or "").strip()
+    if profile_value:
+        env["PROFILE"] = profile_value
+        env["NEXT_PUBLIC_PROFILE"] = profile_value
+    if stage_value:
+        env["STAGE"] = stage_value
+        env["NEXT_PUBLIC_STAGE"] = stage_value
+
+
 def cleanup_web_cache() -> bool:
     removed = False
     next_dir = ROOT / "apps/web-client/.next"
@@ -209,12 +255,13 @@ def start_web(node: int, ports, env: dict[str, str], started_ports: list[str], c
     return 0, cleaned_web_cache
 
 
-def start_local(nodes: list[int], services: list[str]) -> int:
+def start_local(nodes: list[int], services: list[str], profile: str | None = None, stage: str | None = None) -> int:
     cleaned_web_cache = False
     started_ports: list[str] = []
     for node in nodes:
         ports = local_ports(node)
         env = os.environ.copy()
+        apply_profile_env(env, profile, stage)
         env["NODE_NAME"] = f"ia3-{node}"
         report_start_line(f"node {node}")
         report_start_line(f"   ports: web={ports.web} api={ports.api} sim={ports.sim} agent={ports.agent}")
@@ -347,10 +394,12 @@ def status_mk(nodes: list[int]) -> int:
 def dev_lokal_start(
     nodes: str = typer.Argument("1,2,3", help="Node list, e.g. 1,2 or [1,2]"),
     services: str = typer.Option("web,api,sim,agent", help="Comma-separated services"),
+    profile: str = typer.Option("", help="Profile name to pass to all services, e.g. small-test"),
+    stage: str = typer.Option("", help="Stage name to pass to all services"),
 ) -> None:
     node_list = parse_nodes(nodes)
     service_list = parse_services(services)
-    rc = start_local(node_list, service_list)
+    rc = start_local(node_list, service_list, profile=profile or None, stage=stage or None)
     if rc == 0:
         print("\n".join([f"node {n}: web={local_ports(n).web}, api={local_ports(n).api}, sim={local_ports(n).sim}, agent={local_ports(n).agent}" for n in node_list]))
         raise typer.Exit(0)

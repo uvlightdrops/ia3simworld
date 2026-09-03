@@ -145,6 +145,23 @@ export type ImportedMap = {
   isActive: boolean;
 };
 
+export type PerformanceSnapshot = {
+  lastTickDurationMs?: number;
+  lastStateSnapshotMs?: number;
+  avgTickDurationMs?: number;
+  totalGrpcCalls?: number;
+  stateRequests?: number;
+  memoryUsedMb?: number;
+};
+
+export type WorldSettlement = {
+  id: string;
+  center: { x: number; y: number };
+  population?: number;
+  stage?: string;
+  productionFocus?: string;
+};
+
 export type WorldState = {
   running: boolean;
   tick: number;
@@ -154,6 +171,7 @@ export type WorldState = {
   terrain: string[][];
   objects: WorldObject[][];
   agents: Agent[];
+  settlements?: WorldSettlement[];
   events: string[];
   lastUpdated: string;
   createdAt?: string;
@@ -193,11 +211,13 @@ export type WorldState = {
   generating?: boolean;
   genProgress?: number;
   genPhase?: string;
+  lastGeneratedAt?: string;
   domainSettings?: DomainSettings;
   sectorClaims?: SectorClaim[];
   nodeId?: string;
   assignedSectorX?: number;
   assignedSectorY?: number;
+  performance?: PerformanceSnapshot;
 };
 
 export const initialState: WorldState = {
@@ -207,9 +227,9 @@ export const initialState: WorldState = {
   tick: 0,
   tickRateMs: 500,
   totalAgents: 0,
-  worldSize: { width: 512, height: 512 },
-  terrain: Array.from({ length: 512 }, () => Array.from({ length: 512 }, () => "grass")),
-  objects: Array.from({ length: 512 }, () => Array.from({ length: 512 }, () => ({ type: "", amount: 0, maxAmount: 0 }))),
+  worldSize: { width: 0, height: 0 },
+  terrain: [],
+  objects: [],
   agents: [],
   events: [],
   lastUpdated: "",
@@ -227,26 +247,27 @@ export const initialState: WorldState = {
 };
 
 export const terrainColors: Record<string, string> = {
-  grass: "#155e75",   // Dark cyan/teal grass
-  water: "#0c4a6e",   // Deep blue water
-  forest: "#115e59",  // Deep green forest
-  rock: "#374151",    // Dark gray rock
-  home: "#7c2d12",    // Warm brown home/homestead
-  road: "#475569",    // Slate gray road paths
-  court: "#4338ca",   // Indigo court
-  market: "#b45309",  // Amber market
-  crops: "#4d7c0f",   // Lime green crops/farmland
-  workshop: "#d97706",// Golden amber workshop
-  mill: "#ca8a04",    // Yellow/golden grain mill
-  quarry: "#64748b",  // Slate quarry
-  forge: "#dc2626",   // Crimson forge & smelter
-  pottery: "#b45309", // Terracotta pottery
-  storehouse: "#4f46e5",// Indigo granary & storehouse
-  temple: "#7e22ce",  // Deep purple temple/shrine
-  well: "#0369a1",    // Blue well
-  bridge: "#78716c",  // Stone-gray bridge
-  graveyard: "#374151",// Dark graveyard
-  farm: "#65a30d",    // Green farm
+  grass: "#5abf6a",
+  water: "#1e90ff",
+  forest: "#1d7a50",
+  rock: "#6b7280",
+  home: "#d0894a",
+  road: "#8b8b8b",
+  court: "#7c3aed",
+  market: "#f59e0b",
+  crops: "#b9d62e",
+  workshop: "#d97706",
+  mill: "#eab308",
+  quarry: "#64748b",
+  forge: "#dc2626",
+  pottery: "#b45309",
+  storehouse: "#4f46e5",
+  temple: "#8b5cf6",
+  well: "#0369a1",
+  bridge: "#a8a29e",
+  graveyard: "#4b5563",
+  farm: "#84cc16",
+  spiritual_center: "#22c55e",
 };
 
 export const terrainLabels: Record<string, string> = {
@@ -270,6 +291,7 @@ export const terrainLabels: Record<string, string> = {
   bridge: "bridge 🌉",
   graveyard: "graveyard ⚰️",
   farm: "farm 🏡🌾",
+  spiritual_center: "spiritual center 🕉️✨",
 };
 
 export const agentColors: Record<string, string> = {

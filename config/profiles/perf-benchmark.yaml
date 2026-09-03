@@ -10,38 +10,49 @@
 # - All domains enabled for stress testing
 # - No Ollama (to isolate simulation performance)
 
-profile:
-  name: "perf-benchmark"
-  description: "Load test - 50 agents, fast ticks, all domains active"
-  based_on: ""
-  
-  world:
-    width: 2560
-    height: 2560
-    tick_rate_ms: 50        # Maximum speed
-    agents_per_node: 50     # Heavy load
-    terrain:
-      lakes_density: 0.28
-      berries_density: 0.25
-  
-  ui:
-    polling:
-      compact_interval_ms: 5000   # Less frequent polling during test
-      full_state_interval_ms: 10000
-  
-  ai:
-    ollama:
-      enabled: false        # Disable to isolate sim performance
-    agents:
-      decide_period_ticks: 5  # Fast decisions
+world:
+  width: 2560
+  height: 2560
+  tick_rate_ms: 50        # Maximum speed
+  agents_per_node: 50     # Heavy load
+  terrain:
+    lakes_density: 0.28
+    berries_density: 0.25
+  settlements:
+    count: 4
+    min_distance: 70
+  buildings:
+    homes_per_settlement: 1
+    farms_per_settlement: 1
+    mills_per_settlement: 1
+    forges_per_settlement: 1
+    quarries_per_settlement: 1
+    pottery_per_settlement: 1
+    workshops_per_settlement: 1
+    wells_per_settlement: 1
+    spiritual_centers_per_settlement: 1
+    markets_total: 1
+    courts_total: 1
+    storehouses_total: 1
 
-  domains:
-    economy:
-      quota_per_window: 100   # High quota for stress test
-    court:
-      quota_per_window: 50
-    geistesleben:
-      quota_per_window: 50
+ui:
+  polling:
+    compact_interval_ms: 5000   # Less frequent polling during test
+    full_state_interval_ms: 10000
+
+ai:
+  ollama:
+    enabled: false        # Disable to isolate sim performance
+  agents:
+    decide_period_ticks: 5  # Fast decisions
+
+domains:
+  economy:
+    quota_per_window: 100   # High quota for stress test
+  court:
+    quota_per_window: 50
+  geistesleben:
+    quota_per_window: 50
 
 # ============================================================================
 # Use this profile for:

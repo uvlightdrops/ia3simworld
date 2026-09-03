@@ -22,7 +22,8 @@ Alle erfolgreich umgesetzten Anforderungen wurden systematisch archiviert und in
 - **[ ] Geografisches Koordinatensystem:** WGS84 Lat/Lon → 2D Meter-Simulationsgitter Umrechnung zur Positionierung von Agenten an realen Standorten.
 
 ### 3a. GUI einfache Erweiterungen (🟡 In Progress)
-- [ ] Live Event Feed auf eigene Unterseite, im admin menu verlinken, von World map entfernen
+- [x] Live Event Feed auf eigene Unterseite, im admin menu verlinken, von World map entfernen
+- [x] Setting für geschwindigkeit der Simulation soll beim master auf der worldmap seite in die Simulationssteuerung
 - 
 ### 3b. GUI & UX Erweiterungen (📋 Planned)
 - **[ ] AR-Overlay im Web-Client:** Anzeige von Agenten, NPCs und Artefakten auf AR-fähiger Karte.
